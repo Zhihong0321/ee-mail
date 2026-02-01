@@ -12,10 +12,12 @@ import {
   saveWebhook, 
   updateEmailStatus,
   saveReceivedEmail,
+  updateReceivedEmail,
   getStats,
   getRecentEmails,
   getReceivedEmails
 } from './database.js';
+import { getReceivedEmailWithRetry } from './resend-client.js';
 
 // Request body parser
 function parseBody(req) {
@@ -185,35 +187,51 @@ const routes = {
         }
         
         // Handle inbound email (someone sent TO @eternalgy.me)
-        // Resend webhook structure: { type: "email.received", data: { from, to, subject, ... } }
+        // Resend webhook structure: { type: "email.received", data: { from, to, subject, email_id, ... } }
+        // Note: html/text are NOT included in webhook - must fetch via API
         if (body.type === 'email.received' && body.data) {
           const emailData = body.data;
           
-          console.log('📥 Inbound email received:', JSON.stringify({
+          console.log('📥 Inbound email webhook:', JSON.stringify({
             from: emailData.from,
             to: emailData.to,
             subject: emailData.subject,
             emailId: emailData.email_id,
           }, null, 2));
           
-          // Save the received email
+          // Save initial record (without html/text)
           const saved = await saveReceivedEmail({
             emailId: emailData.email_id,
             messageId: emailData.message_id,
             from: emailData.from,
             to: Array.isArray(emailData.to) ? emailData.to.join(', ') : emailData.to,
             subject: emailData.subject || '(no subject)',
-            html: emailData.html,
-            text: emailData.text,
+            html: null, // Will fetch separately
+            text: null,
             attachments: emailData.attachments,
             headers: emailData.headers,
-            rawData: emailData, // Save full payload for debugging
+            rawData: emailData,
           });
           console.log('✅ Inbound email saved, id:', saved?.id);
           
-          // Note: If html/text is null, Resend may require fetching content separately
-          if (!emailData.html && !emailData.text) {
-            console.log('⚠️  Email body not in webhook - may need to fetch separately');
+          // Fetch full email content from Resend API (async, don't block response)
+          if (emailData.email_id) {
+            setTimeout(async () => {
+              try {
+                console.log(`🔄 Fetching email content for ${emailData.email_id}...`);
+                const fullEmail = await getReceivedEmailWithRetry(emailData.email_id);
+                
+                await updateReceivedEmail(emailData.email_id, {
+                  html: fullEmail.html,
+                  text: fullEmail.text,
+                  headers: fullEmail.headers,
+                });
+                
+                console.log('✅ Email content updated');
+              } catch (err) {
+                console.error('❌ Failed to fetch email content:', err.message);
+              }
+            }, 100);
           }
         }
       }

@@ -99,6 +99,13 @@ function build() {
       path.join(distDir, 'package.json')
     );
 
+    // Copy resend-client.js
+    const resendClientPath = path.join(rootDir, 'src', 'resend-client.js');
+    if (fs.existsSync(resendClientPath)) {
+      log('📦 Copying resend-client.js...', 'blue');
+      copyFileSync(resendClientPath, path.join(distDir, 'resend-client.js'));
+    }
+
     const duration = Date.now() - startTime;
     log(`✅ Build completed in ${duration}ms`, 'green');
     log(`📂 Output: ${distDir}`, 'green');

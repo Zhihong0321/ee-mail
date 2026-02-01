@@ -313,3 +313,38 @@ export async function getReceivedEmails(limit = 50) {
 
   return result.rows;
 }
+
+/**
+ * Update received email with content (html/text)
+ */
+export async function updateReceivedEmail(emailId, data) {
+  if (!pool) return null;
+
+  const updates = [];
+  const values = [];
+  let paramIndex = 1;
+
+  if (data.html !== undefined) {
+    updates.push(`html_content = $${paramIndex++}`);
+    values.push(data.html);
+  }
+  if (data.text !== undefined) {
+    updates.push(`text_content = $${paramIndex++}`);
+    values.push(data.text);
+  }
+  if (data.headers) {
+    updates.push(`headers = $${paramIndex++}`);
+    values.push(JSON.stringify(data.headers));
+  }
+
+  if (updates.length === 0) return null;
+
+  values.push(emailId);
+
+  const result = await pool.query(
+    `UPDATE received_emails SET ${updates.join(', ')} WHERE email_id = $${paramIndex} RETURNING *`,
+    values
+  );
+
+  return result.rows[0];
+}
