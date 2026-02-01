@@ -314,6 +314,14 @@
           <div class="tab active" onclick="switchTab('html')">HTML</div>
           <div class="tab" onclick="switchTab('text')">Text</div>
         </div>
+        <div id="refresh-content-btn" style="margin-bottom: 1rem; display: none;">
+          <button class="btn btn-primary" onclick="refreshEmailContent()">
+            🔄 Fetch Content from Resend
+          </button>
+          <span style="color: #666; font-size: 0.875rem; margin-left: 0.5rem;">
+            Content not loaded yet
+          </span>
+        </div>
         <div class="email-content" id="content-html">
           <iframe id="html-frame"></iframe>
         </div>
@@ -452,13 +460,61 @@
       
       // Set content
       const htmlFrame = document.getElementById('html-frame');
+      const hasContent = email.html_content || email.text_content;
       htmlFrame.srcdoc = email.html_content || '<p><em>No HTML content</em></p>';
       document.getElementById('text-content').textContent = email.text_content || '<no text content>';
+      
+      // Show refresh button for received emails without content
+      const refreshBtn = document.getElementById('refresh-content-btn');
+      if (type === 'received' && !hasContent && email.email_id) {
+        refreshBtn.style.display = 'block';
+      } else {
+        refreshBtn.style.display = 'none';
+      }
       
       // Reset tab
       switchTab('html');
       
       document.getElementById('modal').classList.add('active');
+    }
+
+    async function refreshEmailContent() {
+      if (!currentEmail || !currentEmail.email_id) return;
+      
+      const btn = document.querySelector('#refresh-content-btn button');
+      btn.disabled = true;
+      btn.textContent = '🔄 Fetching...';
+      
+      try {
+        const response = await fetch(`/received-emails/${currentEmail.email_id}/fetch`, {
+          method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          // Refresh the email list to get updated content
+          await fetchData();
+          
+          // Update current email in modal
+          const updated = receivedEmails.find(e => e.id === currentEmail.id);
+          if (updated) {
+            currentEmail = updated;
+            document.getElementById('html-frame').srcdoc = updated.html_content || '<p><em>No HTML content</em></p>';
+            document.getElementById('text-content').textContent = updated.text_content || '<no text content>';
+            document.getElementById('refresh-content-btn').style.display = 'none';
+          }
+          
+          alert('✅ Email content loaded!');
+        } else {
+          alert('❌ Failed: ' + result.error);
+        }
+      } catch (err) {
+        alert('❌ Error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Fetch Content from Resend';
+      }
     }
 
     function closeModal() {

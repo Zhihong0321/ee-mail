@@ -279,6 +279,44 @@ const routes = {
     }
   },
 
+  // Re-fetch email content from Resend API
+  'POST /received-emails/:id/fetch': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      // Parse email ID from URL
+      const emailId = req.url.split('/')[2];
+      
+      if (!emailId) {
+        return json(res, 400, { success: false, error: 'Email ID required' });
+      }
+
+      console.log(`🔄 Manually fetching content for email: ${emailId}`);
+      
+      const fullEmail = await getReceivedEmailWithRetry(emailId);
+      
+      const updated = await updateReceivedEmail(emailId, {
+        html: fullEmail.html,
+        text: fullEmail.text,
+        headers: fullEmail.headers,
+      });
+
+      json(res, 200, { 
+        success: true, 
+        message: 'Email content updated',
+        data: {
+          hasHtml: !!fullEmail.html,
+          hasText: !!fullEmail.text,
+        }
+      });
+    } catch (err) {
+      console.error('❌ Failed to fetch email content:', err);
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
   // API docs
   'GET /api': async (req, res) => {
     json(res, 200, {
