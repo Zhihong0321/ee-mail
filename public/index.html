@@ -273,7 +273,8 @@
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" onclick="refreshData()">🔄 Refresh</button>
+      <button class="btn btn-primary" onclick="openComposeModal('new')">✏️ Compose</button>
+      <button class="btn btn-secondary" onclick="refreshData()">🔄 Refresh</button>
       <button class="btn btn-secondary" onclick="window.open('/api', '_blank')">📋 API Docs</button>
     </div>
 
@@ -306,9 +307,15 @@
           <div class="email-meta">
             <span><strong>From:</strong> <span id="modal-from">-</span></span>
             <span><strong>To:</strong> <span id="modal-to">-</span></span>
+            <span id="modal-cc-row" style="display:none;"><strong>CC:</strong> <span id="modal-cc">-</span></span>
             <span><strong>Date:</strong> <span id="modal-date">-</span></span>
             <span><strong>Status:</strong> <span id="modal-status">-</span></span>
           </div>
+        </div>
+        <div class="email-actions" style="margin: 1rem 0; padding: 1rem 0; border-top: 1px solid #e9ecef; border-bottom: 1px solid #e9ecef;">
+          <button class="btn btn-primary" onclick="replyEmail()" id="btn-reply">↩️ Reply</button>
+          <button class="btn btn-secondary" onclick="replyAllEmail()" id="btn-reply-all" style="margin-left: 0.5rem;">↩️ Reply All</button>
+          <button class="btn btn-secondary" onclick="forwardEmail()" id="btn-forward" style="margin-left: 0.5rem;">➡️ Forward</button>
         </div>
         <div class="tabs">
           <div class="tab active" onclick="switchTab('html')">HTML</div>
@@ -328,6 +335,60 @@
         <div class="email-content" id="content-text" style="display:none;">
           <pre id="text-content"></pre>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compose/Reply Modal -->
+  <div class="modal-overlay" id="compose-modal">
+    <div class="modal" style="max-width: 900px;">
+      <div class="modal-header">
+        <h3 id="compose-title">New Message</h3>
+        <button class="modal-close" onclick="closeComposeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="compose-form" onsubmit="sendComposeEmail(event)">
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.25rem; color: #666; font-size: 0.875rem;">From</label>
+            <input type="text" id="compose-from" value="noreply@eternalgy.me" readonly 
+              style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; background: #f5f5f5;">
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.25rem; color: #666; font-size: 0.875rem;">To</label>
+            <input type="text" id="compose-to" required
+              style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;"
+              placeholder="recipient@example.com">
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label style="color: #666; font-size: 0.875rem;">CC</label>
+              <button type="button" onclick="toggleBcc()" style="background: none; border: none; color: #666; font-size: 0.875rem; cursor: pointer;">+ BCC</button>
+            </div>
+            <input type="text" id="compose-cc"
+              style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; margin-top: 0.25rem;"
+              placeholder="cc@example.com, another@example.com">
+          </div>
+          <div style="margin-bottom: 1rem; display: none;" id="compose-bcc-row">
+            <label style="display: block; margin-bottom: 0.25rem; color: #666; font-size: 0.875rem;">BCC</label>
+            <input type="text" id="compose-bcc"
+              style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;"
+              placeholder="bcc@example.com">
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.25rem; color: #666; font-size: 0.875rem;">Subject</label>
+            <input type="text" id="compose-subject" required
+              style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.25rem; color: #666; font-size: 0.875rem;">Message</label>
+            <textarea id="compose-body" rows="10" required
+              style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-family: monospace;"></textarea>
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button type="submit" class="btn btn-primary" id="compose-send-btn">📧 Send</button>
+            <button type="button" class="btn btn-secondary" onclick="closeComposeModal()">Cancel</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -458,6 +519,31 @@
         : '<span class="status-badge status-delivered">received</span>';
       document.getElementById('modal-status').innerHTML = statusHtml;
       
+      // Show CC if present
+      const ccRow = document.getElementById('modal-cc-row');
+      const ccEmails = email.cc_emails || [];
+      if (Array.isArray(ccEmails) && ccEmails.length > 0) {
+        ccRow.style.display = 'inline';
+        document.getElementById('modal-cc').textContent = ccEmails.join(', ');
+      } else {
+        ccRow.style.display = 'none';
+      }
+      
+      // Hide reply buttons for sent emails
+      const btnReply = document.getElementById('btn-reply');
+      const btnReplyAll = document.getElementById('btn-reply-all');
+      const btnForward = document.getElementById('btn-forward');
+      
+      if (type === 'sent') {
+        btnReply.style.display = 'none';
+        btnReplyAll.style.display = 'none';
+        btnForward.style.display = 'none';
+      } else {
+        btnReply.style.display = 'inline-block';
+        btnReplyAll.style.display = 'inline-block';
+        btnForward.style.display = 'inline-block';
+      }
+      
       // Set content
       const htmlFrame = document.getElementById('html-frame');
       const hasContent = email.html_content || email.text_content;
@@ -476,6 +562,173 @@
       switchTab('html');
       
       document.getElementById('modal').classList.add('active');
+    }
+
+    // Compose modal functions
+    let composeMode = 'new'; // 'new', 'reply', 'reply-all', 'forward'
+    
+    function openComposeModal(mode = 'new', email = null) {
+      composeMode = mode;
+      const modal = document.getElementById('compose-modal');
+      const title = document.getElementById('compose-title');
+      const toInput = document.getElementById('compose-to');
+      const ccInput = document.getElementById('compose-cc');
+      const subjectInput = document.getElementById('compose-subject');
+      const bodyInput = document.getElementById('compose-body');
+      
+      // Reset form
+      document.getElementById('compose-form').reset();
+      document.getElementById('compose-bcc-row').style.display = 'none';
+      
+      if (mode === 'new') {
+        title.textContent = 'New Message';
+        toInput.value = '';
+        ccInput.value = '';
+        subjectInput.value = '';
+        bodyInput.value = '';
+      } else if (email) {
+        const emailData = email;
+        const from = emailData.from_email;
+        const to = emailData.to_email;
+        const cc = emailData.cc_emails || [];
+        const subject = emailData.subject || '';
+        
+        // Parse email addresses
+        const fromEmail = extractEmail(from);
+        const toEmails = to.split(',').map(e => extractEmail(e.trim())).filter(Boolean);
+        
+        if (mode === 'reply') {
+          title.textContent = 'Reply';
+          toInput.value = fromEmail;
+          ccInput.value = '';
+          subjectInput.value = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
+          bodyInput.value = formatReplyBody(emailData);
+        } else if (mode === 'reply-all') {
+          title.textContent = 'Reply All';
+          toInput.value = fromEmail;
+          // Add original To recipients (excluding yourself)
+          const otherRecipients = toEmails.filter(e => !e.includes('eternalgy.me'));
+          const otherCc = (Array.isArray(cc) ? cc : []).filter(e => !e.includes('eternalgy.me'));
+          ccInput.value = [...otherRecipients, ...otherCc].join(', ');
+          subjectInput.value = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
+          bodyInput.value = formatReplyBody(emailData);
+        } else if (mode === 'forward') {
+          title.textContent = 'Forward';
+          toInput.value = '';
+          ccInput.value = '';
+          subjectInput.value = subject.startsWith('Fw:') ? subject : `Fw: ${subject}`;
+          bodyInput.value = formatForwardBody(emailData);
+        }
+      }
+      
+      modal.classList.add('active');
+    }
+    
+    function closeComposeModal() {
+      document.getElementById('compose-modal').classList.remove('active');
+    }
+    
+    function toggleBcc() {
+      const row = document.getElementById('compose-bcc-row');
+      row.style.display = row.style.display === 'none' ? 'block' : 'none';
+    }
+    
+    function extractEmail(str) {
+      if (!str) return '';
+      const match = str.match(/<([^>]+)>/);
+      return match ? match[1] : str;
+    }
+    
+    function formatReplyBody(email) {
+      const date = formatDate(email.received_at || email.sent_at);
+      const from = email.from_email;
+      const text = email.text_content || email.html_content?.replace(/<[^>]+>/g, '') || '';
+      
+      return `\n\nOn ${date}, ${from} wrote:\n> ${text.split('\n').join('\n> ')}`;
+    }
+    
+    function formatForwardBody(email) {
+      const date = formatDate(email.received_at || email.sent_at);
+      const from = email.from_email;
+      const to = email.to_email;
+      const subject = email.subject;
+      const text = email.text_content || email.html_content?.replace(/<[^>]+>/g, '') || '';
+      
+      return `\n\n---------- Forwarded message ----------\n` +
+             `From: ${from}\n` +
+             `Date: ${date}\n` +
+             `Subject: ${subject}\n` +
+             `To: ${to}\n\n` +
+             text;
+    }
+    
+    async function sendComposeEmail(event) {
+      event.preventDefault();
+      
+      const btn = document.getElementById('compose-send-btn');
+      btn.disabled = true;
+      btn.textContent = '📤 Sending...';
+      
+      const to = document.getElementById('compose-to').value;
+      const cc = document.getElementById('compose-cc').value;
+      const bcc = document.getElementById('compose-bcc').value;
+      const subject = document.getElementById('compose-subject').value;
+      const body = document.getElementById('compose-body').value;
+      
+      const toArray = to.split(',').map(e => e.trim()).filter(Boolean);
+      const ccArray = cc ? cc.split(',').map(e => e.trim()).filter(Boolean) : undefined;
+      const bccArray = bcc ? bcc.split(',').map(e => e.trim()).filter(Boolean) : undefined;
+      
+      try {
+        const response = await fetch('/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: toArray,
+            cc: ccArray,
+            bcc: bccArray,
+            subject: subject,
+            text: body,
+            html: `<pre style="font-family: Arial, sans-serif; white-space: pre-wrap;">${escapeHtml(body)}</pre>`,
+          })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          alert('✅ Email sent successfully!');
+          closeComposeModal();
+          refreshData();
+        } else {
+          alert('❌ Failed to send: ' + result.error);
+        }
+      } catch (err) {
+        alert('❌ Error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📧 Send';
+      }
+    }
+    
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    function replyEmail() {
+      if (!currentEmail) return;
+      openComposeModal('reply', currentEmail);
+    }
+    
+    function replyAllEmail() {
+      if (!currentEmail) return;
+      openComposeModal('reply-all', currentEmail);
+    }
+    
+    function forwardEmail() {
+      if (!currentEmail) return;
+      openComposeModal('forward', currentEmail);
     }
 
     async function refreshEmailContent() {
