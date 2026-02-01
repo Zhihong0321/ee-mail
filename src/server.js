@@ -4,6 +4,14 @@ import http from 'http';
 import { URL } from 'url';
 import config, { validateConfig } from './config.js';
 import { sendEmail, sendBatch, sendTextEmail } from './email-service.js';
+import { 
+  isDatabaseAvailable, 
+  saveEmail, 
+  saveWebhook, 
+  updateEmailStatus,
+  getStats,
+  getRecentEmails
+} from './database.js';
 
 // Request body parser
 function parseBody(req) {
@@ -59,6 +67,22 @@ const routes = {
       }
 
       const result = await sendEmail(body);
+      
+      // Save to database if available
+      if (isDatabaseAvailable()) {
+        await saveEmail({
+          resendId: result.id,
+          from: body.from || config.DEFAULT_FROM,
+          to: body.to,
+          cc: body.cc,
+          bcc: body.bcc,
+          subject: body.subject,
+          html: body.html,
+          text: body.text,
+          status: 'sent',
+        });
+      }
+      
       json(res, 200, { success: true, data: result });
     } catch (err) {
       console.error('Send email error:', err);
@@ -104,13 +128,53 @@ const routes = {
 
       console.log('Webhook received:', body);
       
-      // Handle the webhook event
-      // You can add your custom logic here
+      // Save webhook to database
+      if (isDatabaseAvailable()) {
+        await saveWebhook(body);
+        
+        // Update email status if it's a delivery event
+        if (body.type && body.data?.email_id) {
+          const statusMap = {
+            'email.delivered': 'delivered',
+            'email.bounced': 'bounced',
+            'email.complained': 'complained',
+          };
+          
+          if (statusMap[body.type]) {
+            await updateEmailStatus(body.data.email_id, statusMap[body.type], {
+              delivered_at: body.type === 'email.delivered' ? new Date() : null,
+            });
+          }
+        }
+      }
       
       json(res, 200, { received: true });
     } catch (err) {
       console.error('Webhook error:', err);
       json(res, 500, { error: err.message });
+    }
+  },
+
+  // Get stats
+  'GET /stats': async (req, res) => {
+    try {
+      const stats = isDatabaseAvailable() ? await getStats() : { note: 'Database not configured' };
+      json(res, 200, { success: true, data: stats });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Get recent emails
+  'GET /emails': async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
+      const emails = isDatabaseAvailable() 
+        ? await getRecentEmails(limit)
+        : { note: 'Database not configured' };
+      json(res, 200, { success: true, data: emails });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
     }
   },
 
@@ -120,8 +184,11 @@ const routes = {
       name: 'EE-Mail Service',
       version: '1.0.0',
       domain: config.EMAIL_DOMAIN,
+      database: isDatabaseAvailable() ? 'connected' : 'not configured',
       endpoints: [
         { method: 'GET', path: '/health', description: 'Health check' },
+        { method: 'GET', path: '/stats', description: 'Email statistics' },
+        { method: 'GET', path: '/emails', description: 'Recent emails' },
         { method: 'POST', path: '/send', description: 'Send email' },
         { method: 'POST', path: '/send-batch', description: 'Send batch emails' },
         { method: 'POST', path: '/webhook', description: 'Receive email webhooks' },

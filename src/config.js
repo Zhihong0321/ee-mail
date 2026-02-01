@@ -12,6 +12,9 @@ const config = {
   EMAIL_DOMAIN: process.env.EMAIL_DOMAIN || 'eternalgy.me',
   DEFAULT_FROM: process.env.DEFAULT_FROM || 'noreply@eternalgy.me',
 
+  // PostgreSQL Database
+  DATABASE_URL: process.env.DATABASE_URL,
+
   // Railway specific
   RAILWAY_STATIC_URL: process.env.RAILWAY_STATIC_URL,
   RAILWAY_PROJECT_NAME: process.env.RAILWAY_PROJECT_NAME,

@@ -14,6 +14,8 @@
     "node": ">=20"
   },
   "keywords": ["email", "resend", "railway"],
-  "dependencies": {},
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
   "devDependencies": {}
 }
