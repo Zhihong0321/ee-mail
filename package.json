@@ -1,0 +1,19 @@
+{
+  "name": "ee-mail-service",
+  "version": "1.0.0",
+  "description": "Email service using Resend API with eternalgy.me domain",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "start": "node dist/index.js",
+    "dev": "node --watch src/index.js",
+    "clean": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": ["email", "resend", "railway"],
+  "dependencies": {},
+  "devDependencies": {}
+}
