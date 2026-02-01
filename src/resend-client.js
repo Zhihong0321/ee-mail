@@ -6,11 +6,20 @@ const RESEND_API_BASE = 'https://api.resend.com';
 
 /**
  * Fetch received email content from Resend API
- * @param {string} emailId - The email_id from webhook
+ * Endpoint: GET /emails/receiving/{email_id}
+ * @param {string} emailId - The email_id from webhook (UUID format)
  * @returns {Promise<Object>} - Email with html, text, headers
  */
 export async function getReceivedEmail(emailId) {
-  const response = await fetch(`${RESEND_API_BASE}/emails/receiving/${emailId}`, {
+  if (!emailId) {
+    throw new Error('Email ID is required');
+  }
+
+  const url = `${RESEND_API_BASE}/emails/receiving/${emailId}`;
+  console.log(`🌐 Fetching from: ${url}`);
+
+  const response = await fetch(url, {
+    method: 'GET',
     headers: {
       'Authorization': `Bearer ${config.RESEND_API_KEY}`,
       'Content-Type': 'application/json',
@@ -18,11 +27,15 @@ export async function getReceivedEmail(emailId) {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to fetch email: ${error}`);
+    const status = response.status;
+    const errorText = await response.text();
+    console.error(`❌ Resend API error ${status}:`, errorText);
+    throw new Error(`Resend API error ${status}: ${errorText}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log('✅ Email content fetched successfully');
+  return data;
 }
 
 /**
@@ -41,7 +54,7 @@ export async function getReceivedEmailWithRetry(emailId, retries = 3) {
       return await getReceivedEmail(emailId);
     } catch (err) {
       lastError = err;
-      console.log(`Retry ${i + 1}/${retries} failed for email ${emailId}`);
+      console.log(`Retry ${i + 1}/${retries} failed for email ${emailId}: ${err.message}`);
     }
   }
   

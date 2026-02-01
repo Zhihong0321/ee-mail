@@ -486,8 +486,10 @@
       btn.textContent = '🔄 Fetching...';
       
       try {
-        const response = await fetch(`/received-emails/${currentEmail.email_id}/fetch`, {
-          method: 'POST'
+        const response = await fetch('/received-emails/fetch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email_id: currentEmail.email_id })
         });
         
         const result = await response.json();
@@ -498,7 +500,7 @@
           
           // Update current email in modal
           const updated = receivedEmails.find(e => e.id === currentEmail.id);
-          if (updated) {
+          if (updated && (updated.html_content || updated.text_content)) {
             currentEmail = updated;
             document.getElementById('html-frame').srcdoc = updated.html_content || '<p><em>No HTML content</em></p>';
             document.getElementById('text-content').textContent = updated.text_content || '<no text content>';

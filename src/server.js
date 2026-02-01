@@ -280,17 +280,17 @@ const routes = {
   },
 
   // Re-fetch email content from Resend API
-  'POST /received-emails/:id/fetch': async (req, res) => {
+  'POST /received-emails/fetch': async (req, res) => {
     try {
       if (!isDatabaseAvailable()) {
         return json(res, 503, { success: false, error: 'Database not available' });
       }
 
-      // Parse email ID from URL
-      const emailId = req.url.split('/')[2];
+      const body = await parseBody(req);
+      const emailId = body.email_id;
       
       if (!emailId) {
-        return json(res, 400, { success: false, error: 'Email ID required' });
+        return json(res, 400, { success: false, error: 'email_id required in body' });
       }
 
       console.log(`🔄 Manually fetching content for email: ${emailId}`);
