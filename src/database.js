@@ -93,6 +93,25 @@ export async function initTables() {
       CREATE INDEX IF NOT EXISTS idx_webhooks_event_type ON webhooks(event_type);
     `);
 
+    // Table for received (inbound) emails
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS received_emails (
+        id SERIAL PRIMARY KEY,
+        message_id VARCHAR(255) UNIQUE,
+        from_email VARCHAR(255) NOT NULL,
+        to_email VARCHAR(255) NOT NULL,
+        subject TEXT,
+        html_content TEXT,
+        text_content TEXT,
+        attachments JSONB DEFAULT '[]',
+        headers JSONB DEFAULT '{}',
+        received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_received_emails_to_email ON received_emails(to_email);
+      CREATE INDEX IF NOT EXISTS idx_received_emails_received_at ON received_emails(received_at);
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS email_logs (
         id SERIAL PRIMARY KEY,
@@ -230,6 +249,58 @@ export async function getRecentEmails(limit = 50) {
 
   const result = await pool.query(
     `SELECT * FROM emails ORDER BY sent_at DESC LIMIT $1`,
+    [limit]
+  );
+
+  return result.rows;
+}
+
+/**
+ * Save received (inbound) email
+ */
+export async function saveReceivedEmail(data) {
+  if (!pool) return null;
+
+  const {
+    messageId,
+    from,
+    to,
+    subject,
+    html,
+    text,
+    attachments,
+    headers,
+  } = data;
+
+  const result = await pool.query(
+    `INSERT INTO received_emails 
+     (message_id, from_email, to_email, subject, html_content, text_content, attachments, headers)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (message_id) DO NOTHING
+     RETURNING *`,
+    [
+      messageId,
+      from,
+      to,
+      subject,
+      html,
+      text,
+      JSON.stringify(attachments || []),
+      JSON.stringify(headers || {}),
+    ]
+  );
+
+  return result.rows[0];
+}
+
+/**
+ * Get received emails
+ */
+export async function getReceivedEmails(limit = 50) {
+  if (!pool) return [];
+
+  const result = await pool.query(
+    `SELECT * FROM received_emails ORDER BY received_at DESC LIMIT $1`,
     [limit]
   );
 

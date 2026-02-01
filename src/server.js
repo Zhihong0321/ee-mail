@@ -11,8 +11,10 @@ import {
   saveEmail, 
   saveWebhook, 
   updateEmailStatus,
+  saveReceivedEmail,
   getStats,
-  getRecentEmails
+  getRecentEmails,
+  getReceivedEmails
 } from './database.js';
 
 // Request body parser
@@ -149,42 +151,62 @@ const routes = {
     }
   },
 
-  // Receive webhook (for incoming emails)
+  // Receive webhook (for delivery status and inbound emails)
   'POST /webhook': async (req, res) => {
     try {
       const body = await parseBody(req);
       
-      // Verify webhook secret if configured
-      if (config.WEBHOOK_SECRET) {
-        const signature = req.headers['x-resend-signature'];
-        // TODO: Implement signature verification
-      }
-
-      console.log('Webhook received:', body);
+      console.log(`📨 Webhook received: ${body.type}`, JSON.stringify(body, null, 2));
       
       // Save webhook to database
       if (isDatabaseAvailable()) {
         await saveWebhook(body);
         
-        // Update email status if it's a delivery event
+        // Handle delivery status events
         if (body.type && body.data?.email_id) {
           const statusMap = {
+            'email.sent': 'sent',
             'email.delivered': 'delivered',
             'email.bounced': 'bounced',
             'email.complained': 'complained',
+            'email.opened': 'opened',
+            'email.clicked': 'clicked',
           };
           
           if (statusMap[body.type]) {
-            await updateEmailStatus(body.data.email_id, statusMap[body.type], {
-              delivered_at: body.type === 'email.delivered' ? new Date() : null,
-            });
+            const updateData = {};
+            if (body.type === 'email.delivered') updateData.delivered_at = new Date();
+            if (body.type === 'email.opened') updateData.opened_at = new Date();
+            if (body.type === 'email.clicked') updateData.clicked_at = new Date();
+            
+            await updateEmailStatus(body.data.email_id, statusMap[body.type], updateData);
+            console.log(`✅ Updated email ${body.data.email_id} status to ${statusMap[body.type]}`);
           }
+        }
+        
+        // Handle inbound email (someone sent TO @eternalgy.me)
+        // Resend sends the full email data in the webhook for inbound emails
+        if (body.type === 'email.received' || (body.to && body.to.includes('@eternalgy.me'))) {
+          console.log('📥 Inbound email received:', body.from, '->', body.to);
+          
+          // Save the received email
+          await saveReceivedEmail({
+            messageId: body.message_id || body.id,
+            from: body.from,
+            to: Array.isArray(body.to) ? body.to.join(', ') : body.to,
+            subject: body.subject,
+            html: body.html,
+            text: body.text,
+            attachments: body.attachments,
+            headers: body.headers,
+          });
+          console.log('✅ Inbound email saved to database');
         }
       }
       
       json(res, 200, { received: true });
     } catch (err) {
-      console.error('Webhook error:', err);
+      console.error('❌ Webhook error:', err);
       json(res, 500, { error: err.message });
     }
   },
@@ -199,12 +221,25 @@ const routes = {
     }
   },
 
-  // Get recent emails
+  // Get sent emails
   'GET /emails': async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
       const emails = isDatabaseAvailable() 
         ? await getRecentEmails(limit)
+        : [];
+      json(res, 200, { success: true, data: emails });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Get received (inbound) emails
+  'GET /received-emails': async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
+      const emails = isDatabaseAvailable() 
+        ? await getReceivedEmails(limit)
         : [];
       json(res, 200, { success: true, data: emails });
     } catch (err) {
@@ -221,11 +256,12 @@ const routes = {
       database: isDatabaseAvailable() ? 'connected' : 'not configured',
       endpoints: [
         { method: 'GET', path: '/health', description: 'Health check' },
-        { method: 'GET', path: '/stats', description: 'Email statistics' },
-        { method: 'GET', path: '/emails', description: 'Recent emails' },
+        { method: 'GET', path: '/stats', description: 'Email statistics (sent)' },
+        { method: 'GET', path: '/emails', description: 'Sent emails' },
+        { method: 'GET', path: '/received-emails', description: 'Received (inbound) emails' },
         { method: 'POST', path: '/send', description: 'Send email' },
         { method: 'POST', path: '/send-batch', description: 'Send batch emails' },
-        { method: 'POST', path: '/webhook', description: 'Receive email webhooks' },
+        { method: 'POST', path: '/webhook', description: 'Receive webhooks & inbound emails' },
       ],
     });
   },
