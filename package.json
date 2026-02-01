@@ -13,9 +13,12 @@
   "engines": {
     "node": ">=20"
   },
-  "keywords": ["email", "resend", "railway"],
+  "keywords": [
+    "email",
+    "resend",
+    "railway"
+  ],
   "dependencies": {
-    "pg": "^8.13.1"
-  },
-  "devDependencies": {}
+    "pg": "^8.18.0"
+  }
 }
