@@ -206,7 +206,7 @@ export async function updateEmailStatus(resendId, status, data = {}) {
  * Get email statistics
  */
 export async function getStats() {
-  if (!pool) return null;
+  if (!pool) return { total: 0, sent: 0, delivered: 0, opened: 0, bounced: 0 };
 
   const result = await pool.query(`
     SELECT 
@@ -226,7 +226,7 @@ export async function getStats() {
  * Get recent emails
  */
 export async function getRecentEmails(limit = 50) {
-  if (!pool) return null;
+  if (!pool) return [];
 
   const result = await pool.query(
     `SELECT * FROM emails ORDER BY sent_at DESC LIMIT $1`,

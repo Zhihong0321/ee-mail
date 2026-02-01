@@ -205,7 +205,7 @@ const routes = {
       const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
       const emails = isDatabaseAvailable() 
         ? await getRecentEmails(limit)
-        : { note: 'Database not configured' };
+        : [];
       json(res, 200, { success: true, data: emails });
     } catch (err) {
       json(res, 500, { success: false, error: err.message });
