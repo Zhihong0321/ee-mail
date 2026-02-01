@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EE-Mail Admin</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      line-height: 1.6;
+    }
+    .header {
+      background: #1a1a2e;
+      color: white;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { font-size: 1.5rem; }
+    .header .domain {
+      background: #4a4a6a;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.875rem;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .stat-card h3 {
+      font-size: 2rem;
+      color: #1a1a2e;
+      margin-bottom: 0.5rem;
+    }
+    .stat-card p {
+      color: #666;
+      font-size: 0.875rem;
+      text-transform: uppercase;
+    }
+    .actions {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #1a1a2e;
+      color: white;
+    }
+    .btn-primary:hover { background: #2a2a4e; }
+    .btn-secondary {
+      background: white;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+    .btn-secondary:hover { background: #f5f5f5; }
+    .email-list {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .email-list-header {
+      padding: 1rem 1.5rem;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e9ecef;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .email-item {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #e9ecef;
+      cursor: pointer;
+      transition: background 0.2s;
+      display: grid;
+      grid-template-columns: 250px 1fr 150px;
+      gap: 1rem;
+      align-items: center;
+    }
+    .email-item:hover { background: #f8f9fa; }
+    .email-item:last-child { border-bottom: none; }
+    .email-from {
+      font-weight: 500;
+      color: #333;
+    }
+    .email-subject {
+      color: #666;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .email-date {
+      color: #999;
+      font-size: 0.875rem;
+      text-align: right;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-left: 0.5rem;
+    }
+    .status-sent { background: #e3f2fd; color: #1976d2; }
+    .status-delivered { background: #e8f5e9; color: #388e3c; }
+    .status-bounced { background: #ffebee; color: #d32f2f; }
+    .status-opened { background: #f3e5f5; color: #7b1fa2; }
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: #666;
+    }
+    .empty {
+      text-align: center;
+      padding: 3rem;
+      color: #999;
+    }
+    .error {
+      background: #ffebee;
+      color: #d32f2f;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: white;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #e9ecef;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: #666;
+    }
+    .modal-body {
+      padding: 1.5rem;
+      overflow-y: auto;
+    }
+    .email-detail-header {
+      margin-bottom: 1.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .email-detail-header h2 {
+      margin-bottom: 1rem;
+    }
+    .email-meta {
+      display: grid;
+      gap: 0.5rem;
+      color: #666;
+      font-size: 0.875rem;
+    }
+    .email-meta span {
+      display: flex;
+    }
+    .email-meta strong {
+      width: 80px;
+      color: #333;
+    }
+    .email-content {
+      background: #f8f9fa;
+      padding: 1.5rem;
+      border-radius: 6px;
+      min-height: 200px;
+    }
+    .email-content iframe {
+      width: 100%;
+      min-height: 300px;
+      border: none;
+      background: white;
+    }
+    .tabs {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .tab {
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+    .tab.active {
+      border-bottom-color: #1a1a2e;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📧 EE-Mail Admin</h1>
+    <span class="domain" id="domain">eternalgy.me</span>
+  </div>
+
+  <div class="container">
+    <div id="error"></div>
+    
+    <div class="stats-grid" id="stats">
+      <div class="stat-card">
+        <h3>-</h3>
+        <p>Total</p>
+      </div>
+      <div class="stat-card">
+        <h3>-</h3>
+        <p>Sent</p>
+      </div>
+      <div class="stat-card">
+        <h3>-</h3>
+        <p>Delivered</p>
+      </div>
+      <div class="stat-card">
+        <h3>-</h3>
+        <p>Opened</p>
+      </div>
+      <div class="stat-card">
+        <h3>-</h3>
+        <p>Bounced</p>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" onclick="refreshData()">🔄 Refresh</button>
+      <button class="btn btn-secondary" onclick="window.open('/api', '_blank')">📋 API Docs</button>
+    </div>
+
+    <div class="email-list">
+      <div class="email-list-header">
+        <h3>Recent Emails</h3>
+        <span id="email-count">Loading...</span>
+      </div>
+      <div id="email-list">
+        <div class="loading">Loading emails...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Email Detail Modal -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Email Details</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="email-detail-header">
+          <h2 id="modal-subject">-</h2>
+          <div class="email-meta">
+            <span><strong>From:</strong> <span id="modal-from">-</span></span>
+            <span><strong>To:</strong> <span id="modal-to">-</span></span>
+            <span><strong>Date:</strong> <span id="modal-date">-</span></span>
+            <span><strong>Status:</strong> <span id="modal-status">-</span></span>
+          </div>
+        </div>
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab('html')">HTML</div>
+          <div class="tab" onclick="switchTab('text')">Text</div>
+        </div>
+        <div class="email-content" id="content-html">
+          <iframe id="html-frame"></iframe>
+        </div>
+        <div class="email-content" id="content-text" style="display:none;">
+          <pre id="text-content"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentEmail = null;
+
+    async function fetchData() {
+      try {
+        const [statsRes, emailsRes] = await Promise.all([
+          fetch('/stats'),
+          fetch('/emails')
+        ]);
+
+        const stats = await statsRes.json();
+        const emails = await emailsRes.json();
+
+        if (stats.success) {
+          updateStats(stats.data);
+        }
+        if (emails.success) {
+          updateEmailList(emails.data);
+        }
+      } catch (err) {
+        showError('Failed to load data: ' + err.message);
+      }
+    }
+
+    function updateStats(data) {
+      const statsEl = document.getElementById('stats');
+      if (data.note) {
+        statsEl.innerHTML = '<div class="stat-card" style="grid-column: 1/-1;"><p>Database not configured</p></div>';
+        return;
+      }
+      const stats = [
+        { value: data.total, label: 'Total' },
+        { value: data.sent, label: 'Sent' },
+        { value: data.delivered, label: 'Delivered' },
+        { value: data.opened, label: 'Opened' },
+        { value: data.bounced, label: 'Bounced' }
+      ];
+      statsEl.innerHTML = stats.map(s => `
+        <div class="stat-card">
+          <h3>${s.value || 0}</h3>
+          <p>${s.label}</p>
+        </div>
+      `).join('');
+    }
+
+    function updateEmailList(emails) {
+      const listEl = document.getElementById('email-list');
+      document.getElementById('email-count').textContent = `${emails.length} emails`;
+      
+      if (!emails || emails.length === 0) {
+        listEl.innerHTML = '<div class="empty">No emails found</div>';
+        return;
+      }
+
+      listEl.innerHTML = emails.map(email => `
+        <div class="email-item" onclick="viewEmail(${email.id})">
+          <div class="email-from">
+            ${email.from_email}
+            <span class="status-badge status-${email.status}">${email.status}</span>
+          </div>
+          <div class="email-subject">${email.subject}</div>
+          <div class="email-date">${formatDate(email.sent_at)}</div>
+        </div>
+      `).join('');
+    }
+
+    function viewEmail(id) {
+      fetch('/emails')
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            const email = data.data.find(e => e.id === id);
+            if (email) {
+              showEmailDetail(email);
+            }
+          }
+        });
+    }
+
+    function showEmailDetail(email) {
+      currentEmail = email;
+      document.getElementById('modal-subject').textContent = email.subject;
+      document.getElementById('modal-from').textContent = email.from_email;
+      document.getElementById('modal-to').textContent = email.to_email;
+      document.getElementById('modal-date').textContent = formatDate(email.sent_at);
+      document.getElementById('modal-status').innerHTML = `
+        <span class="status-badge status-${email.status}">${email.status}</span>
+      `;
+      
+      // Set content
+      const htmlFrame = document.getElementById('html-frame');
+      htmlFrame.srcdoc = email.html_content || '<p><em>No HTML content</em></p>';
+      document.getElementById('text-content').textContent = email.text_content || '<no text content>';
+      
+      // Reset tab
+      switchTab('html');
+      
+      document.getElementById('modal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.remove('active');
+    }
+
+    function switchTab(type) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab')[type === 'html' ? 0 : 1].classList.add('active');
+      document.getElementById('content-html').style.display = type === 'html' ? 'block' : 'none';
+      document.getElementById('content-text').style.display = type === 'text' ? 'block' : 'none';
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '-';
+      const date = new Date(dateStr);
+      return date.toLocaleString();
+    }
+
+    function showError(msg) {
+      document.getElementById('error').innerHTML = `<div class="error">${msg}</div>`;
+    }
+
+    function refreshData() {
+      document.getElementById('email-list').innerHTML = '<div class="loading">Loading...</div>';
+      fetchData();
+    }
+
+    // Close modal on overlay click
+    document.getElementById('modal').addEventListener('click', (e) => {
+      if (e.target.id === 'modal') closeModal();
+    });
+
+    // Initial load
+    fetchData();
+    // Refresh every 30 seconds
+    setInterval(fetchData, 30000);
+  </script>
+</body>
+</html>

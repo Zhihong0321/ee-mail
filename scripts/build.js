@@ -84,6 +84,14 @@ function build() {
       throw new Error('src directory not found');
     }
 
+    // Copy public files
+    const publicDir = path.join(rootDir, 'public');
+    const distPublicDir = path.join(distDir, '..', 'public');
+    if (fs.existsSync(publicDir)) {
+      log('📁 Copying public files...', 'blue');
+      copyDir(publicDir, distPublicDir);
+    }
+
     // Copy package.json
     log('📦 Copying package.json...', 'blue');
     copyFileSync(

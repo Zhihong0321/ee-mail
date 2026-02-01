@@ -1,6 +1,8 @@
 // HTTP Server for Railway
 
 import http from 'http';
+import fs from 'fs';
+import path from 'path';
 import { URL } from 'url';
 import config, { validateConfig } from './config.js';
 import { sendEmail, sendBatch, sendTextEmail } from './email-service.js';
@@ -33,6 +35,38 @@ function parseBody(req) {
 function json(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
+}
+
+// Static file serving
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+};
+
+function serveStatic(res, filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+  
+  fs.readFile(filePath, (err, content) => {
+    if (err) {
+      if (err.code === 'ENOENT') {
+        json(res, 404, { error: 'Not found' });
+      } else {
+        json(res, 500, { error: 'Server error' });
+      }
+      return;
+    }
+    
+    res.writeHead(200, { 'Content-Type': contentType });
+    res.end(content);
+  });
 }
 
 // CORS headers
@@ -178,8 +212,8 @@ const routes = {
     }
   },
 
-  // Root - API info
-  'GET /': async (req, res) => {
+  // API docs
+  'GET /api': async (req, res) => {
     json(res, 200, {
       name: 'EE-Mail Service',
       version: '1.0.0',
@@ -212,14 +246,35 @@ export function createServer() {
     }
 
     const url = new URL(req.url, `http://${req.headers.host}`);
-    const routeKey = `${req.method} ${url.pathname}`;
+    const pathname = url.pathname;
+    const routeKey = `${req.method} ${pathname}`;
 
-    const handler = routes[routeKey] || routes[`${req.method} ${url.pathname}`];
-
+    // API routes
+    const handler = routes[routeKey];
     if (handler) {
       await handler(req, res);
-    } else {
-      json(res, 404, { error: 'Not found' });
+      return;
     }
+
+    // Serve admin page at root
+    if (pathname === '/') {
+      serveStatic(res, path.join(process.cwd(), 'public', 'index.html'));
+      return;
+    }
+
+    // Serve static files from public directory
+    if (pathname.startsWith('/')) {
+      const filePath = path.join(process.cwd(), 'public', pathname);
+      // Security: ensure file is within public directory
+      const resolvedPath = path.resolve(filePath);
+      const publicDir = path.resolve(process.cwd(), 'public');
+      
+      if (resolvedPath.startsWith(publicDir) && fs.existsSync(resolvedPath)) {
+        serveStatic(res, resolvedPath);
+        return;
+      }
+    }
+
+    json(res, 404, { error: 'Not found' });
   });
 }
