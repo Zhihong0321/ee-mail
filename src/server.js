@@ -185,22 +185,36 @@ const routes = {
         }
         
         // Handle inbound email (someone sent TO @eternalgy.me)
-        // Resend sends the full email data in the webhook for inbound emails
-        if (body.type === 'email.received' || (body.to && body.to.includes('@eternalgy.me'))) {
-          console.log('📥 Inbound email received:', body.from, '->', body.to);
+        // Resend webhook structure: { type: "email.received", data: { from, to, subject, ... } }
+        if (body.type === 'email.received' && body.data) {
+          const emailData = body.data;
+          
+          console.log('📥 Inbound email received:', JSON.stringify({
+            from: emailData.from,
+            to: emailData.to,
+            subject: emailData.subject,
+            emailId: emailData.email_id,
+          }, null, 2));
           
           // Save the received email
-          await saveReceivedEmail({
-            messageId: body.message_id || body.id,
-            from: body.from,
-            to: Array.isArray(body.to) ? body.to.join(', ') : body.to,
-            subject: body.subject,
-            html: body.html,
-            text: body.text,
-            attachments: body.attachments,
-            headers: body.headers,
+          const saved = await saveReceivedEmail({
+            emailId: emailData.email_id,
+            messageId: emailData.message_id,
+            from: emailData.from,
+            to: Array.isArray(emailData.to) ? emailData.to.join(', ') : emailData.to,
+            subject: emailData.subject || '(no subject)',
+            html: emailData.html,
+            text: emailData.text,
+            attachments: emailData.attachments,
+            headers: emailData.headers,
+            rawData: emailData, // Save full payload for debugging
           });
-          console.log('✅ Inbound email saved to database');
+          console.log('✅ Inbound email saved, id:', saved?.id);
+          
+          // Note: If html/text is null, Resend may require fetching content separately
+          if (!emailData.html && !emailData.text) {
+            console.log('⚠️  Email body not in webhook - may need to fetch separately');
+          }
         }
       }
       

@@ -97,17 +97,20 @@ export async function initTables() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS received_emails (
         id SERIAL PRIMARY KEY,
-        message_id VARCHAR(255) UNIQUE,
-        from_email VARCHAR(255) NOT NULL,
-        to_email VARCHAR(255) NOT NULL,
+        email_id VARCHAR(255) UNIQUE,
+        message_id VARCHAR(255),
+        from_email TEXT NOT NULL,
+        to_email TEXT NOT NULL,
         subject TEXT,
         html_content TEXT,
         text_content TEXT,
         attachments JSONB DEFAULT '[]',
         headers JSONB DEFAULT '{}',
+        raw_data JSONB DEFAULT '{}',
         received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE INDEX IF NOT EXISTS idx_received_emails_email_id ON received_emails(email_id);
       CREATE INDEX IF NOT EXISTS idx_received_emails_to_email ON received_emails(to_email);
       CREATE INDEX IF NOT EXISTS idx_received_emails_received_at ON received_emails(received_at);
     `);
@@ -262,6 +265,7 @@ export async function saveReceivedEmail(data) {
   if (!pool) return null;
 
   const {
+    emailId,
     messageId,
     from,
     to,
@@ -270,15 +274,17 @@ export async function saveReceivedEmail(data) {
     text,
     attachments,
     headers,
+    rawData,
   } = data;
 
   const result = await pool.query(
     `INSERT INTO received_emails 
-     (message_id, from_email, to_email, subject, html_content, text_content, attachments, headers)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     ON CONFLICT (message_id) DO NOTHING
+     (email_id, message_id, from_email, to_email, subject, html_content, text_content, attachments, headers, raw_data)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     ON CONFLICT (email_id) DO NOTHING
      RETURNING *`,
     [
+      emailId,
       messageId,
       from,
       to,
@@ -287,6 +293,7 @@ export async function saveReceivedEmail(data) {
       text,
       JSON.stringify(attachments || []),
       JSON.stringify(headers || {}),
+      JSON.stringify(rawData || {}),
     ]
   );
 
