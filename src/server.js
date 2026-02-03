@@ -711,6 +711,74 @@ const routes = {
       version: '1.0.0',
       domain: config.EMAIL_DOMAIN,
       database: isDatabaseAvailable() ? 'connected' : 'not configured',
+      documentation: {
+        send_email: {
+          endpoint: 'POST /send',
+          description: 'Send a single email with optional attachments',
+          request_body: {
+            to: 'string or array - Recipient email(s)',
+            subject: 'string - Email subject',
+            html: 'string - HTML content (optional if text provided)',
+            text: 'string - Plain text content (optional if html provided)',
+            from: 'string - Sender email (optional, uses domain default)',
+            domain: 'string - Domain to use (optional, auto-detected from from)',
+            cc: 'array - CC recipients (optional)',
+            bcc: 'array - BCC recipients (optional)',
+            attachments: [
+              {
+                filename: 'string - File name',
+                content: 'string - Base64 encoded file content'
+              }
+            ]
+          },
+          limits: {
+            max_attachment_size: '10MB per file',
+            max_total_attachments: '10MB total',
+          },
+          example: {
+            to: 'user@example.com',
+            subject: 'Hello',
+            html: '<h1>Hello World</h1>',
+            attachments: [
+              { filename: 'doc.pdf', content: 'base64content...' }
+            ]
+          }
+        },
+        send_batch: {
+          endpoint: 'POST /send-batch',
+          description: 'Send multiple emails in one request',
+          request_body: {
+            emails: 'array of email objects (same as /send)'
+          }
+        },
+        list_sent: {
+          endpoint: 'GET /emails?domain=&limit=50',
+          description: 'List sent emails with optional domain filter'
+        },
+        list_received: {
+          endpoint: 'GET /received-emails?domain=&limit=50',
+          description: 'List received (inbound) emails with optional domain filter'
+        },
+        api_keys: {
+          description: 'Manage Resend API keys per domain (stored in database)',
+          endpoints: [
+            { method: 'GET', path: '/api-keys', description: 'List all API keys (key value hidden)' },
+            { 
+              method: 'POST', 
+              path: '/api-keys', 
+              description: 'Create or update API key for a domain',
+              body: { domain: 'domain.com', api_key: 're_xxxx', description: 'optional' }
+            },
+            { 
+              method: 'PATCH', 
+              path: '/api-keys/:id', 
+              description: 'Update API key (toggle active, change description)',
+              body: { api_key: 'new_key', description: 'new desc', is_active: true }
+            },
+            { method: 'DELETE', path: '/api-keys/:id', description: 'Delete API key' }
+          ]
+        }
+      },
       endpoints: [
         { method: 'GET', path: '/health', description: 'Health check' },
         { method: 'GET', path: '/stats', description: 'Email statistics (sent)' },
@@ -718,7 +786,7 @@ const routes = {
         { method: 'GET', path: '/emails/:id', description: 'View a single sent email by ID (database ID or Resend ID)' },
         { method: 'GET', path: '/received-emails', description: 'List received (inbound) emails' },
         { method: 'GET', path: '/received-emails/:id', description: 'View a single received email by ID (database ID or email ID)' },
-        { method: 'POST', path: '/send', description: 'Send email' },
+        { method: 'POST', path: '/send', description: 'Send email with optional attachments (10MB limit)' },
         { method: 'POST', path: '/send-batch', description: 'Send batch emails' },
         { method: 'POST', path: '/webhook', description: 'Receive webhooks & inbound emails' },
         { method: 'GET', path: '/domains', description: 'List all configured domains' },
