@@ -114,6 +114,32 @@ const routes = {
         });
       }
 
+      // Validate attachments (10MB limit)
+      const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
+      if (body.attachments && Array.isArray(body.attachments)) {
+        let totalSize = 0;
+        for (const attachment of body.attachments) {
+          if (attachment.content) {
+            // Calculate base64 decoded size (approximate)
+            const base64Length = attachment.content.length;
+            const decodedSize = Math.floor(base64Length * 0.75);
+            totalSize += decodedSize;
+            
+            if (decodedSize > MAX_ATTACHMENT_SIZE) {
+              return json(res, 400, {
+                error: `Attachment "${attachment.filename || 'unnamed'}" exceeds 10MB limit`,
+              });
+            }
+          }
+        }
+        
+        if (totalSize > MAX_ATTACHMENT_SIZE) {
+          return json(res, 400, {
+            error: 'Total attachment size exceeds 10MB limit',
+          });
+        }
+      }
+
       // Determine domain from from_email or use provided domain
       let fromEmail = body.from;
       let domain = body.domain;
