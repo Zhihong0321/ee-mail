@@ -34,7 +34,7 @@ export async function sendEmail(options) {
 
   // Determine which API key to use based on domain or from email
   const fromDomain = domain || (from && from.split('@')[1]);
-  const apiKey = getApiKeyForDomain(fromDomain);
+  const apiKey = await getApiKeyForDomain(fromDomain);
 
   if (!apiKey) {
     const error = new Error(`No API key configured for domain: ${fromDomain}`);
@@ -99,7 +99,7 @@ export async function sendTextEmail(to, subject, text) {
  * @returns {Promise<Object>} - Email status
  */
 export async function getEmailStatus(emailId, domain) {
-  const apiKey = getApiKeyForDomain(domain) || config.RESEND_API_KEY;
+  const apiKey = await getApiKeyForDomain(domain);
   
   const response = await fetch(`${RESEND_API_URL}/${emailId}`, {
     headers: {

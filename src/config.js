@@ -44,10 +44,9 @@ function parseDefaultSenders(domains) {
   return senders;
 }
 
-// Parse API keys for each domain
+// Parse API keys for each domain from env (fallback only)
 // Format: domain1: apikey1, domain2: apikey2
-// Falls back to RESEND_API_KEY if no domain-specific key is found
-function parseApiKeys(domains) {
+function parseApiKeysFromEnv(domains) {
   const apiKeysEnv = process.env.RESEND_API_KEYS;
   const apiKeys = {};
   const defaultApiKey = process.env.RESEND_API_KEY;
@@ -56,7 +55,7 @@ function parseApiKeys(domains) {
     // Parse domain:apikey pairs
     apiKeysEnv.split(',').forEach(pair => {
       const [domain, ...keyParts] = pair.split(':');
-      const key = keyParts.join(':').trim(); // Handle keys that might contain ':'
+      const key = keyParts.join(':').trim();
       if (domain && key) {
         apiKeys[domain.trim().toLowerCase()] = key;
       }
@@ -75,16 +74,18 @@ function parseApiKeys(domains) {
 
 const EMAIL_DOMAINS = parseDomains();
 const DEFAULT_SENDERS = parseDefaultSenders(EMAIL_DOMAINS);
-const RESEND_API_KEYS = parseApiKeys(EMAIL_DOMAINS);
+
+// API keys from env (will be overridden by database keys)
+const ENV_API_KEYS = parseApiKeysFromEnv(EMAIL_DOMAINS);
 
 const config = {
   // Server
   PORT: process.env.PORT || 3000,
   NODE_ENV: process.env.NODE_ENV || 'development',
 
-  // Resend API
-  RESEND_API_KEY: process.env.RESEND_API_KEY,  // Default/fallback API key
-  RESEND_API_KEYS,  // Map of domain -> API key: { 'domain1.com': 'key1', ... }
+  // Resend API - fallback keys from env
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  ENV_API_KEYS,  // Map of domain -> API key from env: { 'domain1.com': 'key1', ... }
 
   // Email Domains (multiple supported)
   EMAIL_DOMAINS,  // Array of domains: ['domain1.com', 'domain2.com']
@@ -106,19 +107,56 @@ const config = {
 
 // Validate required config
 export function validateConfig() {
-  // Check that we have at least one API key configured
+  // At least one key should be configured (can be added via admin UI later)
   const hasDefaultKey = !!config.RESEND_API_KEY;
-  const hasDomainKeys = Object.values(config.RESEND_API_KEYS).some(k => !!k);
+  const hasDomainKeys = Object.values(config.ENV_API_KEYS).some(k => !!k);
   
   if (!hasDefaultKey && !hasDomainKeys) {
-    throw new Error('Missing required environment variable: RESEND_API_KEY or RESEND_API_KEYS');
+    console.warn('⚠️ No RESEND_API_KEY configured. Add API keys via admin UI or set RESEND_API_KEY env var.');
   }
 }
 
-// Get API key for a specific domain
-export function getApiKeyForDomain(domain) {
+// In-memory cache for database API keys (refreshed on each use)
+let dbApiKeysCache = null;
+let dbApiKeysCacheTime = 0;
+const API_KEYS_CACHE_TTL = 60000; // 1 minute
+
+// Load API keys from database
+async function loadApiKeysFromDb() {
+  // Dynamic import to avoid circular dependency
+  const { getApiKeysMap } = await import('./database.js');
+  return await getApiKeysMap();
+}
+
+// Get API key for a specific domain (checks DB first, then env)
+export async function getApiKeyForDomain(domain) {
   if (!domain) return config.RESEND_API_KEY;
-  return config.RESEND_API_KEYS[domain.toLowerCase()] || config.RESEND_API_KEY;
+  
+  const domainLower = domain.toLowerCase();
+  
+  // Try to get from database (with simple caching)
+  try {
+    const now = Date.now();
+    if (!dbApiKeysCache || (now - dbApiKeysCacheTime) > API_KEYS_CACHE_TTL) {
+      dbApiKeysCache = await loadApiKeysFromDb();
+      dbApiKeysCacheTime = now;
+    }
+    
+    if (dbApiKeysCache[domainLower]) {
+      return dbApiKeysCache[domainLower];
+    }
+  } catch (err) {
+    // Database not available, fall through to env
+  }
+  
+  // Fallback to environment variables
+  return config.ENV_API_KEYS[domainLower] || config.RESEND_API_KEY;
+}
+
+// Clear API keys cache (call after updating keys in admin)
+export function clearApiKeysCache() {
+  dbApiKeysCache = null;
+  dbApiKeysCacheTime = 0;
 }
 
 export default config;

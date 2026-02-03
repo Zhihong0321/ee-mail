@@ -168,6 +168,22 @@ export async function initTables() {
       CREATE INDEX IF NOT EXISTS idx_email_logs_created_at ON email_logs(created_at);
     `);
 
+    // Create api_keys table for domain-specific API key management
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id SERIAL PRIMARY KEY,
+        domain VARCHAR(255) NOT NULL UNIQUE,
+        api_key TEXT NOT NULL,
+        description TEXT,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_api_keys_domain ON api_keys(domain);
+      CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(is_active);
+    `);
+
     console.log('✅ Database tables initialized');
   } catch (err) {
     console.error('❌ Failed to initialize tables:', err.message);
@@ -533,4 +549,137 @@ export async function getReceivedDomains() {
   `);
 
   return result.rows.map(r => r.domain);
+}
+
+// ============================================
+// API Key Management Functions
+// ============================================
+
+/**
+ * Get all API keys
+ */
+export async function getAllApiKeys() {
+  if (!pool) return [];
+
+  const result = await pool.query(`
+    SELECT id, domain, description, is_active, created_at, updated_at
+    FROM api_keys 
+    ORDER BY domain
+  `);
+
+  return result.rows;
+}
+
+/**
+ * Get API key by domain (returns full record with key)
+ */
+export async function getApiKeyByDomain(domain) {
+  if (!pool || !domain) return null;
+
+  const result = await pool.query(`
+    SELECT * FROM api_keys 
+    WHERE domain = $1 AND is_active = true
+  `, [domain.toLowerCase()]);
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Get API key by ID
+ */
+export async function getApiKeyById(id) {
+  if (!pool) return null;
+
+  const result = await pool.query(`
+    SELECT id, domain, description, is_active, created_at, updated_at
+    FROM api_keys 
+    WHERE id = $1
+  `, [id]);
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Create or update API key for a domain
+ */
+export async function saveApiKey(domain, apiKey, description = '') {
+  if (!pool) return null;
+
+  const result = await pool.query(`
+    INSERT INTO api_keys (domain, api_key, description, updated_at)
+    VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+    ON CONFLICT (domain) 
+    DO UPDATE SET 
+      api_key = EXCLUDED.api_key,
+      description = EXCLUDED.description,
+      updated_at = CURRENT_TIMESTAMP,
+      is_active = true
+    RETURNING id, domain, description, is_active, created_at, updated_at
+  `, [domain.toLowerCase(), apiKey, description]);
+
+  return result.rows[0];
+}
+
+/**
+ * Update API key
+ */
+export async function updateApiKey(id, updates) {
+  if (!pool) return null;
+
+  const allowedFields = ['api_key', 'description', 'is_active'];
+  const setClauses = [];
+  const values = [];
+  let paramIndex = 1;
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (allowedFields.includes(key)) {
+      setClauses.push(`${key} = $${paramIndex++}`);
+      values.push(value);
+    }
+  }
+
+  if (setClauses.length === 0) return null;
+
+  setClauses.push(`updated_at = CURRENT_TIMESTAMP`);
+  values.push(id);
+
+  const result = await pool.query(`
+    UPDATE api_keys 
+    SET ${setClauses.join(', ')} 
+    WHERE id = $${paramIndex}
+    RETURNING id, domain, description, is_active, created_at, updated_at
+  `, values);
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Delete API key
+ */
+export async function deleteApiKey(id) {
+  if (!pool) return false;
+
+  const result = await pool.query(`
+    DELETE FROM api_keys WHERE id = $1
+  `, [id]);
+
+  return result.rowCount > 0;
+}
+
+/**
+ * Get API keys map for all domains (for config)
+ */
+export async function getApiKeysMap() {
+  if (!pool) return {};
+
+  const result = await pool.query(`
+    SELECT domain, api_key FROM api_keys WHERE is_active = true
+  `);
+
+  const map = {};
+  result.rows.forEach(row => {
+    map[row.domain] = row.api_key;
+  });
+
+  return map;
 }

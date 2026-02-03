@@ -16,7 +16,7 @@ export async function fetchAttachments(emailId, domain) {
     throw new Error('Email ID is required');
   }
 
-  const apiKey = getApiKeyForDomain(domain);
+  const apiKey = await getApiKeyForDomain(domain);
   if (!apiKey) {
     throw new Error(`No API key configured for domain: ${domain}`);
   }
@@ -79,7 +79,7 @@ export async function getReceivedEmail(emailId, domain) {
     throw new Error('Email ID is required');
   }
 
-  const apiKey = getApiKeyForDomain(domain);
+  const apiKey = await getApiKeyForDomain(domain);
   if (!apiKey) {
     throw new Error(`No API key configured for domain: ${domain}`);
   }

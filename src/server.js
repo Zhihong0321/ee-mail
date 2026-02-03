@@ -4,7 +4,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { URL } from 'url';
-import config, { validateConfig } from './config.js';
+import config, { validateConfig, clearApiKeysCache } from './config.js';
 import { sendEmail, sendBatch, sendTextEmail } from './email-service.js';
 import {
   isDatabaseAvailable,
@@ -24,7 +24,12 @@ import {
   getEmailById,
   getEmailByResendId,
   getReceivedEmailById,
-  getReceivedEmailByEmailId
+  getReceivedEmailByEmailId,
+  getAllApiKeys,
+  saveApiKey,
+  getApiKeyById,
+  updateApiKey,
+  deleteApiKey
 } from './database.js';
 import { getReceivedEmailWithRetry } from './resend-client.js';
 import { fetchAttachments, downloadAttachment } from './resend-client.js';
@@ -601,6 +606,104 @@ const routes = {
     }
   },
 
+  // ============================================
+  // API Key Management (Admin UI)
+  // ============================================
+  
+  // Get all API keys
+  'GET /api-keys': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const keys = await getAllApiKeys();
+      json(res, 200, { success: true, data: keys });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Create or update API key
+  'POST /api-keys': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const body = await parseBody(req);
+      
+      if (!body.domain || !body.api_key) {
+        return json(res, 400, {
+          error: 'Missing required fields: domain, api_key',
+        });
+      }
+
+      const result = await saveApiKey(body.domain, body.api_key, body.description || '');
+      
+      // Clear cache so new key is used immediately
+      clearApiKeysCache();
+      
+      json(res, 200, { success: true, data: result });
+    } catch (err) {
+      console.error('Save API key error:', err);
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Update API key (toggle active, update description)
+  'PATCH /api-keys/:id': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const id = parseInt(req.params.id);
+      const body = await parseBody(req);
+      
+      const updates = {};
+      if (body.api_key !== undefined) updates.api_key = body.api_key;
+      if (body.description !== undefined) updates.description = body.description;
+      if (body.is_active !== undefined) updates.is_active = body.is_active;
+
+      const result = await updateApiKey(id, updates);
+      
+      if (!result) {
+        return json(res, 404, { success: false, error: 'API key not found' });
+      }
+      
+      // Clear cache so changes take effect immediately
+      clearApiKeysCache();
+      
+      json(res, 200, { success: true, data: result });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Delete API key
+  'DELETE /api-keys/:id': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const id = parseInt(req.params.id);
+      const deleted = await deleteApiKey(id);
+      
+      if (!deleted) {
+        return json(res, 404, { success: false, error: 'API key not found' });
+      }
+      
+      // Clear cache so deletion takes effect immediately
+      clearApiKeysCache();
+      
+      json(res, 200, { success: true, message: 'API key deleted' });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
   // API docs
   'GET /api': async (req, res) => {
     json(res, 200, {
@@ -623,6 +726,10 @@ const routes = {
         { method: 'GET', path: '/received-emails/:id/attachments', description: 'Get email attachments list' },
         { method: 'GET', path: '/attachments/:emailId/:filename', description: 'View attachment inline' },
         { method: 'GET', path: '/attachments/:emailId/:filename/download', description: 'Download attachment' },
+        { method: 'GET', path: '/api-keys', description: 'List all API keys (admin)' },
+        { method: 'POST', path: '/api-keys', description: 'Create/update API key (admin)' },
+        { method: 'PATCH', path: '/api-keys/:id', description: 'Update API key (admin)' },
+        { method: 'DELETE', path: '/api-keys/:id', description: 'Delete API key (admin)' },
       ],
     });
   },
