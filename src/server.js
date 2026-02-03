@@ -252,10 +252,15 @@ const routes = {
             emailId: emailData.email_id,
           }, null, 2));
           
+          // Extract domain from "to" email address for API key selection
+          const toEmail = Array.isArray(emailData.to) ? emailData.to[0] : emailData.to;
+          const domain = toEmail ? toEmail.split('@')[1] : null;
+          
           // Save initial record (without html/text)
           const saved = await saveReceivedEmail({
             emailId: emailData.email_id,
             messageId: emailData.message_id,
+            domain,
             from: emailData.from,
             to: Array.isArray(emailData.to) ? emailData.to.join(', ') : emailData.to,
             subject: emailData.subject || '(no subject)',
@@ -272,7 +277,7 @@ const routes = {
             setTimeout(async () => {
               try {
                 console.log(`🔄 Fetching email content for ${emailData.email_id}...`);
-                const fullEmail = await getReceivedEmailWithRetry(emailData.email_id);
+                const fullEmail = await getReceivedEmailWithRetry(emailData.email_id, domain);
                 
                 await updateReceivedEmail(emailData.email_id, {
                   html: fullEmail.html,
@@ -462,7 +467,7 @@ const routes = {
         return json(res, 400, { success: false, error: 'Email has no Resend ID' });
       }
 
-      const attachments = await fetchAttachments(email.email_id);
+      const attachments = await fetchAttachments(email.email_id, email.domain);
       
       json(res, 200, { 
         success: true, 
@@ -483,8 +488,15 @@ const routes = {
         return json(res, 400, { success: false, error: 'Missing emailId or filename' });
       }
 
+      // Get domain from database if available
+      let domain = null;
+      if (isDatabaseAvailable()) {
+        const email = await getReceivedEmailByEmailId(emailId);
+        domain = email?.domain;
+      }
+
       // Fetch fresh attachments to get valid download_url
-      const attachments = await fetchAttachments(emailId);
+      const attachments = await fetchAttachments(emailId, domain);
       const attachment = attachments.find(a => a.filename === decodeURIComponent(filename));
       
       if (!attachment) {
@@ -516,8 +528,15 @@ const routes = {
         return json(res, 400, { success: false, error: 'Missing emailId or filename' });
       }
 
+      // Get domain from database if available
+      let domain = null;
+      if (isDatabaseAvailable()) {
+        const email = await getReceivedEmailByEmailId(emailId);
+        domain = email?.domain;
+      }
+
       // Fetch fresh attachments to get valid download_url
-      const attachments = await fetchAttachments(emailId);
+      const attachments = await fetchAttachments(emailId, domain);
       const attachment = attachments.find(a => a.filename === decodeURIComponent(filename));
       
       if (!attachment) {
@@ -554,9 +573,13 @@ const routes = {
         return json(res, 400, { success: false, error: 'email_id required in body' });
       }
 
+      // Get domain from database for API key selection
+      const email = await getReceivedEmailByEmailId(emailId);
+      const domain = email?.domain;
+
       console.log(`🔄 Manually fetching content for email: ${emailId}`);
       
-      const fullEmail = await getReceivedEmailWithRetry(emailId);
+      const fullEmail = await getReceivedEmailWithRetry(emailId, domain);
       
       const updated = await updateReceivedEmail(emailId, {
         html: fullEmail.html,

@@ -1,6 +1,6 @@
 // Resend Email Service
 
-import config from './config.js';
+import config, { getApiKeyForDomain } from './config.js';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 
@@ -15,10 +15,11 @@ const RESEND_API_URL = 'https://api.resend.com/emails';
  * @param {Array} [options.cc] - CC recipients
  * @param {Array} [options.bcc] - BCC recipients
  * @param {Array} [options.attachments] - Attachments
+ * @param {string} [options.domain] - Domain to determine which API key to use
  * @returns {Promise<Object>} - Resend API response
  */
 export async function sendEmail(options) {
-  const { to, subject, html, text, from, cc, bcc, attachments } = options;
+  const { to, subject, html, text, from, cc, bcc, attachments, domain } = options;
 
   const payload = {
     from: from || config.DEFAULT_FROM,
@@ -31,10 +32,20 @@ export async function sendEmail(options) {
     ...(attachments && { attachments }),
   };
 
+  // Determine which API key to use based on domain or from email
+  const fromDomain = domain || (from && from.split('@')[1]);
+  const apiKey = getApiKeyForDomain(fromDomain);
+
+  if (!apiKey) {
+    const error = new Error(`No API key configured for domain: ${fromDomain}`);
+    error.status = 500;
+    throw error;
+  }
+
   const response = await fetch(RESEND_API_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${config.RESEND_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
@@ -84,12 +95,15 @@ export async function sendTextEmail(to, subject, text) {
 /**
  * Get email status from Resend
  * @param {string} emailId - Resend email ID
+ * @param {string} [domain] - Domain to determine which API key to use
  * @returns {Promise<Object>} - Email status
  */
-export async function getEmailStatus(emailId) {
+export async function getEmailStatus(emailId, domain) {
+  const apiKey = getApiKeyForDomain(domain) || config.RESEND_API_KEY;
+  
   const response = await fetch(`${RESEND_API_URL}/${emailId}`, {
     headers: {
-      'Authorization': `Bearer ${config.RESEND_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
     },
   });
 

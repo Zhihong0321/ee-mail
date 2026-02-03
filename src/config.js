@@ -44,8 +44,38 @@ function parseDefaultSenders(domains) {
   return senders;
 }
 
+// Parse API keys for each domain
+// Format: domain1: apikey1, domain2: apikey2
+// Falls back to RESEND_API_KEY if no domain-specific key is found
+function parseApiKeys(domains) {
+  const apiKeysEnv = process.env.RESEND_API_KEYS;
+  const apiKeys = {};
+  const defaultApiKey = process.env.RESEND_API_KEY;
+  
+  if (apiKeysEnv) {
+    // Parse domain:apikey pairs
+    apiKeysEnv.split(',').forEach(pair => {
+      const [domain, ...keyParts] = pair.split(':');
+      const key = keyParts.join(':').trim(); // Handle keys that might contain ':'
+      if (domain && key) {
+        apiKeys[domain.trim().toLowerCase()] = key;
+      }
+    });
+  }
+  
+  // Fill in missing domains with default key
+  domains.forEach(domain => {
+    if (!apiKeys[domain]) {
+      apiKeys[domain] = defaultApiKey;
+    }
+  });
+  
+  return apiKeys;
+}
+
 const EMAIL_DOMAINS = parseDomains();
 const DEFAULT_SENDERS = parseDefaultSenders(EMAIL_DOMAINS);
+const RESEND_API_KEYS = parseApiKeys(EMAIL_DOMAINS);
 
 const config = {
   // Server
@@ -53,7 +83,8 @@ const config = {
   NODE_ENV: process.env.NODE_ENV || 'development',
 
   // Resend API
-  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  RESEND_API_KEY: process.env.RESEND_API_KEY,  // Default/fallback API key
+  RESEND_API_KEYS,  // Map of domain -> API key: { 'domain1.com': 'key1', ... }
 
   // Email Domains (multiple supported)
   EMAIL_DOMAINS,  // Array of domains: ['domain1.com', 'domain2.com']
@@ -75,12 +106,19 @@ const config = {
 
 // Validate required config
 export function validateConfig() {
-  const required = ['RESEND_API_KEY'];
-  const missing = required.filter(key => !config[key]);
+  // Check that we have at least one API key configured
+  const hasDefaultKey = !!config.RESEND_API_KEY;
+  const hasDomainKeys = Object.values(config.RESEND_API_KEYS).some(k => !!k);
   
-  if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  if (!hasDefaultKey && !hasDomainKeys) {
+    throw new Error('Missing required environment variable: RESEND_API_KEY or RESEND_API_KEYS');
   }
+}
+
+// Get API key for a specific domain
+export function getApiKeyForDomain(domain) {
+  if (!domain) return config.RESEND_API_KEY;
+  return config.RESEND_API_KEYS[domain.toLowerCase()] || config.RESEND_API_KEY;
 }
 
 export default config;

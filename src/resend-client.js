@@ -1,6 +1,6 @@
 // Resend API Client for fetching email content
 
-import config from './config.js';
+import config, { getApiKeyForDomain } from './config.js';
 
 const RESEND_API_BASE = 'https://api.resend.com';
 
@@ -8,11 +8,17 @@ const RESEND_API_BASE = 'https://api.resend.com';
  * Fetch attachments list from Resend API
  * Endpoint: GET /emails/receiving/{email_id}/attachments
  * @param {string} emailId - The email_id from webhook (UUID format)
+ * @param {string} [domain] - Domain to determine which API key to use
  * @returns {Promise<Array>} - Array of attachment metadata with download URLs
  */
-export async function fetchAttachments(emailId) {
+export async function fetchAttachments(emailId, domain) {
   if (!emailId) {
     throw new Error('Email ID is required');
+  }
+
+  const apiKey = getApiKeyForDomain(domain);
+  if (!apiKey) {
+    throw new Error(`No API key configured for domain: ${domain}`);
   }
 
   const url = `${RESEND_API_BASE}/emails/receiving/${emailId}/attachments`;
@@ -21,7 +27,7 @@ export async function fetchAttachments(emailId) {
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      'Authorization': `Bearer ${config.RESEND_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
   });
@@ -65,11 +71,17 @@ export async function downloadAttachment(downloadUrl) {
  * Fetch received email content from Resend API
  * Endpoint: GET /emails/receiving/{email_id}
  * @param {string} emailId - The email_id from webhook (UUID format)
+ * @param {string} [domain] - Domain to determine which API key to use
  * @returns {Promise<Object>} - Email with html, text, headers
  */
-export async function getReceivedEmail(emailId) {
+export async function getReceivedEmail(emailId, domain) {
   if (!emailId) {
     throw new Error('Email ID is required');
+  }
+
+  const apiKey = getApiKeyForDomain(domain);
+  if (!apiKey) {
+    throw new Error(`No API key configured for domain: ${domain}`);
   }
 
   const url = `${RESEND_API_BASE}/emails/receiving/${emailId}`;
@@ -78,7 +90,7 @@ export async function getReceivedEmail(emailId) {
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      'Authorization': `Bearer ${config.RESEND_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
   });
@@ -97,8 +109,12 @@ export async function getReceivedEmail(emailId) {
 
 /**
  * Get email content with retry
+ * @param {string} emailId - The email_id from webhook (UUID format)
+ * @param {string} [domain] - Domain to determine which API key to use
+ * @param {number} [retries=3] - Number of retries
+ * @returns {Promise<Object>} - Email with html, text, headers
  */
-export async function getReceivedEmailWithRetry(emailId, retries = 3) {
+export async function getReceivedEmailWithRetry(emailId, domain, retries = 3) {
   let lastError;
   
   for (let i = 0; i < retries; i++) {
@@ -108,7 +124,7 @@ export async function getReceivedEmailWithRetry(emailId, retries = 3) {
         await new Promise(r => setTimeout(r, 1000 * i));
       }
       
-      return await getReceivedEmail(emailId);
+      return await getReceivedEmail(emailId, domain);
     } catch (err) {
       lastError = err;
       console.log(`Retry ${i + 1}/${retries} failed for email ${emailId}: ${err.message}`);
