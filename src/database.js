@@ -54,11 +54,11 @@ export async function initTables() {
 
   const client = await pool.connect();
   try {
+    // Create tables (without domain column first for backward compatibility)
     await client.query(`
       CREATE TABLE IF NOT EXISTS emails (
         id SERIAL PRIMARY KEY,
         resend_id VARCHAR(255) UNIQUE,
-        domain VARCHAR(255) NOT NULL DEFAULT 'eternalgy.me',
         from_email VARCHAR(255) NOT NULL,
         to_email VARCHAR(255) NOT NULL,
         cc_emails JSONB DEFAULT '[]',
@@ -76,10 +76,29 @@ export async function initTables() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_emails_resend_id ON emails(resend_id);
-      CREATE INDEX IF NOT EXISTS idx_emails_domain ON emails(domain);
       CREATE INDEX IF NOT EXISTS idx_emails_to_email ON emails(to_email);
       CREATE INDEX IF NOT EXISTS idx_emails_status ON emails(status);
       CREATE INDEX IF NOT EXISTS idx_emails_sent_at ON emails(sent_at);
+    `);
+
+    // Add domain column to emails if it doesn't exist
+    const emailsDomainCheck = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'emails' AND column_name = 'domain'
+    `);
+    
+    if (emailsDomainCheck.rows.length === 0) {
+      await client.query(`
+        ALTER TABLE emails 
+        ADD COLUMN domain VARCHAR(255) NOT NULL DEFAULT 'eternalgy.me'
+      `);
+      console.log('✅ Added domain column to emails table');
+    }
+    
+    // Create domain index separately (after ensuring column exists)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_domain ON emails(domain)
     `);
 
     await client.query(`
@@ -95,13 +114,12 @@ export async function initTables() {
       CREATE INDEX IF NOT EXISTS idx_webhooks_event_type ON webhooks(event_type);
     `);
 
-    // Table for received (inbound) emails
+    // Create received_emails table (without domain column first)
     await client.query(`
       CREATE TABLE IF NOT EXISTS received_emails (
         id SERIAL PRIMARY KEY,
         email_id VARCHAR(255) UNIQUE,
         message_id VARCHAR(255),
-        domain VARCHAR(255) NOT NULL DEFAULT 'eternalgy.me',
         from_email TEXT NOT NULL,
         to_email TEXT NOT NULL,
         subject TEXT,
@@ -114,9 +132,28 @@ export async function initTables() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_received_emails_email_id ON received_emails(email_id);
-      CREATE INDEX IF NOT EXISTS idx_received_emails_domain ON received_emails(domain);
       CREATE INDEX IF NOT EXISTS idx_received_emails_to_email ON received_emails(to_email);
       CREATE INDEX IF NOT EXISTS idx_received_emails_received_at ON received_emails(received_at);
+    `);
+
+    // Add domain column to received_emails if it doesn't exist
+    const receivedDomainCheck = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'received_emails' AND column_name = 'domain'
+    `);
+    
+    if (receivedDomainCheck.rows.length === 0) {
+      await client.query(`
+        ALTER TABLE received_emails 
+        ADD COLUMN domain VARCHAR(255) NOT NULL DEFAULT 'eternalgy.me'
+      `);
+      console.log('✅ Added domain column to received_emails table');
+    }
+    
+    // Create domain index separately (after ensuring column exists)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_received_emails_domain ON received_emails(domain)
     `);
 
     await client.query(`
