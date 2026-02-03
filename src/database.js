@@ -58,6 +58,7 @@ export async function initTables() {
       CREATE TABLE IF NOT EXISTS emails (
         id SERIAL PRIMARY KEY,
         resend_id VARCHAR(255) UNIQUE,
+        domain VARCHAR(255) NOT NULL DEFAULT 'eternalgy.me',
         from_email VARCHAR(255) NOT NULL,
         to_email VARCHAR(255) NOT NULL,
         cc_emails JSONB DEFAULT '[]',
@@ -75,6 +76,7 @@ export async function initTables() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_emails_resend_id ON emails(resend_id);
+      CREATE INDEX IF NOT EXISTS idx_emails_domain ON emails(domain);
       CREATE INDEX IF NOT EXISTS idx_emails_to_email ON emails(to_email);
       CREATE INDEX IF NOT EXISTS idx_emails_status ON emails(status);
       CREATE INDEX IF NOT EXISTS idx_emails_sent_at ON emails(sent_at);
@@ -99,6 +101,7 @@ export async function initTables() {
         id SERIAL PRIMARY KEY,
         email_id VARCHAR(255) UNIQUE,
         message_id VARCHAR(255),
+        domain VARCHAR(255) NOT NULL DEFAULT 'eternalgy.me',
         from_email TEXT NOT NULL,
         to_email TEXT NOT NULL,
         subject TEXT,
@@ -111,6 +114,7 @@ export async function initTables() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_received_emails_email_id ON received_emails(email_id);
+      CREATE INDEX IF NOT EXISTS idx_received_emails_domain ON received_emails(domain);
       CREATE INDEX IF NOT EXISTS idx_received_emails_to_email ON received_emails(to_email);
       CREATE INDEX IF NOT EXISTS idx_received_emails_received_at ON received_emails(received_at);
     `);
@@ -144,6 +148,7 @@ export async function saveEmail(data) {
 
   const {
     resendId,
+    domain,
     from,
     to,
     cc,
@@ -154,13 +159,18 @@ export async function saveEmail(data) {
     status = 'sent',
   } = data;
 
+  // Extract domain from from_email if not provided
+  const fromEmail = from || '';
+  const emailDomain = domain || fromEmail.split('@')[1] || 'eternalgy.me';
+
   const result = await pool.query(
     `INSERT INTO emails 
-     (resend_id, from_email, to_email, cc_emails, bcc_emails, subject, html_content, text_content, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     (resend_id, domain, from_email, to_email, cc_emails, bcc_emails, subject, html_content, text_content, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [
       resendId,
+      emailDomain,
       from,
       Array.isArray(to) ? to.join(', ') : to,
       JSON.stringify(cc || []),
@@ -267,6 +277,7 @@ export async function saveReceivedEmail(data) {
   const {
     emailId,
     messageId,
+    domain,
     from,
     to,
     subject,
@@ -277,17 +288,22 @@ export async function saveReceivedEmail(data) {
     rawData,
   } = data;
 
+  // Extract domain from to_email if not provided
+  const toEmail = Array.isArray(to) ? to[0] : to;
+  const emailDomain = domain || (toEmail && toEmail.split('@')[1]) || 'eternalgy.me';
+
   const result = await pool.query(
     `INSERT INTO received_emails 
-     (email_id, message_id, from_email, to_email, subject, html_content, text_content, attachments, headers, raw_data)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     (email_id, message_id, domain, from_email, to_email, subject, html_content, text_content, attachments, headers, raw_data)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      ON CONFLICT (email_id) DO NOTHING
      RETURNING *`,
     [
       emailId,
       messageId,
+      emailDomain,
       from,
-      to,
+      Array.isArray(to) ? to.join(', ') : to,
       subject,
       html,
       text,
@@ -403,4 +419,81 @@ export async function getReceivedEmailByEmailId(emailId) {
   );
 
   return result.rows[0] || null;
+}
+
+/**
+ * Get email statistics by domain
+ */
+export async function getStatsByDomain() {
+  if (!pool) return [];
+
+  const result = await pool.query(`
+    SELECT 
+      domain,
+      COUNT(*) as total,
+      COUNT(*) FILTER (WHERE status = 'sent') as sent,
+      COUNT(*) FILTER (WHERE status = 'delivered') as delivered,
+      COUNT(*) FILTER (WHERE status = 'bounced') as bounced,
+      COUNT(*) FILTER (WHERE opened_at IS NOT NULL) as opened,
+      COUNT(*) FILTER (WHERE clicked_at IS NOT NULL) as clicked
+    FROM emails
+    GROUP BY domain
+    ORDER BY domain
+  `);
+
+  return result.rows;
+}
+
+/**
+ * Get recent emails filtered by domain
+ */
+export async function getRecentEmailsByDomain(domain, limit = 50) {
+  if (!pool) return [];
+
+  const result = await pool.query(
+    `SELECT * FROM emails WHERE domain = $1 ORDER BY sent_at DESC LIMIT $2`,
+    [domain, limit]
+  );
+
+  return result.rows;
+}
+
+/**
+ * Get received emails filtered by domain
+ */
+export async function getReceivedEmailsByDomain(domain, limit = 50) {
+  if (!pool) return [];
+
+  const result = await pool.query(
+    `SELECT * FROM received_emails WHERE domain = $1 ORDER BY received_at DESC LIMIT $2`,
+    [domain, limit]
+  );
+
+  return result.rows;
+}
+
+/**
+ * Get all unique domains from sent emails
+ */
+export async function getSentDomains() {
+  if (!pool) return [];
+
+  const result = await pool.query(`
+    SELECT DISTINCT domain FROM emails WHERE domain IS NOT NULL ORDER BY domain
+  `);
+
+  return result.rows.map(r => r.domain);
+}
+
+/**
+ * Get all unique domains from received emails
+ */
+export async function getReceivedDomains() {
+  if (!pool) return [];
+
+  const result = await pool.query(`
+    SELECT DISTINCT domain FROM received_emails WHERE domain IS NOT NULL ORDER BY domain
+  `);
+
+  return result.rows.map(r => r.domain);
 }

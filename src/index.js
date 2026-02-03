@@ -14,7 +14,8 @@ const server = createServer();
 
 server.listen(config.PORT, () => {
   console.log(`🚀 EE-Mail Service running on port ${config.PORT}`);
-  console.log(`📧 Domain: ${config.EMAIL_DOMAIN}`);
+  console.log(`📧 Domains: ${config.EMAIL_DOMAINS.join(', ')}`);
+  console.log(`   Primary: ${config.EMAIL_DOMAIN}`);
   console.log(`🌍 Environment: ${config.NODE_ENV}`);
   console.log(`🗄️  Database: ${pool ? 'connected' : 'not configured'}`);
   console.log(`🔗 Health check: http://localhost:${config.PORT}/health`);

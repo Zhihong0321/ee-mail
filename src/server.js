@@ -14,8 +14,13 @@ import {
   saveReceivedEmail,
   updateReceivedEmail,
   getStats,
+  getStatsByDomain,
   getRecentEmails,
   getReceivedEmails,
+  getRecentEmailsByDomain,
+  getReceivedEmailsByDomain,
+  getSentDomains,
+  getReceivedDomains,
   getEmailById,
   getEmailByResendId,
   getReceivedEmailById,
@@ -109,13 +114,30 @@ const routes = {
         });
       }
 
-      const result = await sendEmail(body);
+      // Determine domain from from_email or use provided domain
+      let fromEmail = body.from;
+      let domain = body.domain;
+      
+      if (fromEmail) {
+        // Extract domain from from_email
+        domain = fromEmail.split('@')[1];
+      } else if (domain && config.EMAIL_DOMAINS.includes(domain)) {
+        // Use provided domain with default sender
+        fromEmail = config.DEFAULT_SENDERS[domain];
+      } else {
+        // Use primary domain default
+        fromEmail = config.DEFAULT_FROM;
+        domain = config.EMAIL_DOMAIN;
+      }
+
+      const result = await sendEmail({ ...body, from: fromEmail });
       
       // Save to database if available
       if (isDatabaseAvailable()) {
         await saveEmail({
           resendId: result.id,
-          from: body.from || config.DEFAULT_FROM,
+          domain,
+          from: fromEmail,
           to: body.to,
           cc: body.cc,
           bcc: body.bcc,
@@ -126,7 +148,7 @@ const routes = {
         });
       }
       
-      json(res, 200, { success: true, data: result });
+      json(res, 200, { success: true, data: result, domain });
     } catch (err) {
       console.error('Send email error:', err);
       json(res, err.status || 500, {
@@ -258,13 +280,56 @@ const routes = {
     }
   },
 
+  // Get stats by domain
+  'GET /stats/domains': async (req, res) => {
+    try {
+      const stats = isDatabaseAvailable() 
+        ? await getStatsByDomain() 
+        : { note: 'Database not configured' };
+      json(res, 200, { success: true, data: stats });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Get all configured domains
+  'GET /domains': async (req, res) => {
+    try {
+      const configuredDomains = config.EMAIL_DOMAINS || [];
+      const sentDomains = isDatabaseAvailable() ? await getSentDomains() : [];
+      const receivedDomains = isDatabaseAvailable() ? await getReceivedDomains() : [];
+      
+      // Merge all domains
+      const allDomains = new Set([...configuredDomains, ...sentDomains, ...receivedDomains]);
+      
+      const domainData = Array.from(allDomains).map(domain => ({
+        domain,
+        configured: configuredDomains.includes(domain),
+        defaultSender: config.DEFAULT_SENDERS[domain] || `noreply@${domain}`,
+        isPrimary: domain === config.EMAIL_DOMAIN,
+      }));
+      
+      json(res, 200, { success: true, data: domainData });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
   // Get sent emails
   'GET /emails': async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
-      const emails = isDatabaseAvailable() 
-        ? await getRecentEmails(limit)
-        : [];
+      const domain = req.query?.domain;
+      
+      let emails;
+      if (isDatabaseAvailable()) {
+        emails = domain 
+          ? await getRecentEmailsByDomain(domain, limit)
+          : await getRecentEmails(limit);
+      } else {
+        emails = [];
+      }
+      
       json(res, 200, { success: true, data: emails });
     } catch (err) {
       json(res, 500, { success: false, error: err.message });
@@ -275,9 +340,17 @@ const routes = {
   'GET /received-emails': async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
-      const emails = isDatabaseAvailable()
-        ? await getReceivedEmails(limit)
-        : [];
+      const domain = req.query?.domain;
+      
+      let emails;
+      if (isDatabaseAvailable()) {
+        emails = domain
+          ? await getReceivedEmailsByDomain(domain, limit)
+          : await getReceivedEmails(limit);
+      } else {
+        emails = [];
+      }
+      
       json(res, 200, { success: true, data: emails });
     } catch (err) {
       json(res, 500, { success: false, error: err.message });
@@ -496,6 +569,8 @@ const routes = {
         { method: 'POST', path: '/send', description: 'Send email' },
         { method: 'POST', path: '/send-batch', description: 'Send batch emails' },
         { method: 'POST', path: '/webhook', description: 'Receive webhooks & inbound emails' },
+        { method: 'GET', path: '/domains', description: 'List all configured domains' },
+        { method: 'GET', path: '/stats/domains', description: 'Get stats grouped by domain' },
         { method: 'GET', path: '/received-emails/:id/attachments', description: 'Get email attachments list' },
         { method: 'GET', path: '/attachments/:emailId/:filename', description: 'View attachment inline' },
         { method: 'GET', path: '/attachments/:emailId/:filename/download', description: 'Download attachment' },

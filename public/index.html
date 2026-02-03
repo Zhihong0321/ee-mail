@@ -329,7 +329,12 @@
 <body>
   <div class="header">
     <h1>📧 EE-Mail Admin</h1>
-    <span class="domain" id="domain">eternalgy.me</span>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+      <select id="domain-selector" class="domain-selector" style="display: none;">
+        <option value="">All Domains</option>
+      </select>
+      <span class="domain" id="domain">eternalgy.me</span>
+    </div>
   </div>
 
   <div class="container">
@@ -439,6 +444,13 @@
       <div class="modal-body">
         <form id="compose-form" onsubmit="sendComposeEmail(event)">
           <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.25rem; color: #666; font-size: 0.875rem;">Domain</label>
+            <select id="compose-domain" onchange="updateComposeFrom()"
+              style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+              <!-- Options populated dynamically -->
+            </select>
+          </div>
+          <div style="margin-bottom: 1rem;">
             <label style="display: block; margin-bottom: 0.25rem; color: #666; font-size: 0.875rem;">From</label>
             <input type="text" id="compose-from" value="noreply@eternalgy.me" readonly 
               style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; background: #f5f5f5;">
@@ -488,21 +500,99 @@
     let currentTab = 'sent';
     let receivedEmails = [];
     let sentEmails = [];
+    let availableDomains = [];
+    let selectedDomain = ''; // Empty string means all domains
+    let domainSenders = {}; // Map of domain -> default sender
+
+    async function fetchDomains() {
+      try {
+        const res = await fetch('/domains');
+        const result = await res.json();
+        
+        if (result.success && result.data) {
+          availableDomains = result.data;
+          domainSenders = {};
+          
+          // Populate domain selector
+          const selector = document.getElementById('domain-selector');
+          const composeDomain = document.getElementById('compose-domain');
+          
+          // Clear existing options
+          selector.innerHTML = '<option value="">All Domains</option>';
+          composeDomain.innerHTML = '';
+          
+          result.data.forEach(d => {
+            domainSenders[d.domain] = d.defaultSender;
+            
+            // Add to filter selector
+            const option = document.createElement('option');
+            option.value = d.domain;
+            option.textContent = d.domain;
+            selector.appendChild(option);
+            
+            // Add to compose selector
+            const composeOption = document.createElement('option');
+            composeOption.value = d.domain;
+            composeOption.textContent = d.domain + (d.isPrimary ? ' (Primary)' : '');
+            composeDomain.appendChild(composeOption);
+          });
+          
+          // Show selector if multiple domains
+          if (result.data.length > 1) {
+            selector.style.display = 'block';
+          }
+          
+          // Update header domain display
+          if (result.data.length > 0) {
+            const primary = result.data.find(d => d.isPrimary) || result.data[0];
+            document.getElementById('domain').textContent = primary.domain;
+            if (result.data.length > 1) {
+              document.getElementById('domain').textContent += ` (+${result.data.length - 1})`;
+            }
+          }
+          
+          // Set initial compose from
+          updateComposeFrom();
+        }
+      } catch (err) {
+        console.error('Failed to load domains:', err);
+      }
+    }
+
+    function updateComposeFrom() {
+      const domain = document.getElementById('compose-domain').value;
+      const fromInput = document.getElementById('compose-from');
+      
+      if (domain && domainSenders[domain]) {
+        fromInput.value = domainSenders[domain];
+      } else if (availableDomains.length > 0) {
+        fromInput.value = availableDomains[0].defaultSender;
+      }
+    }
 
     async function fetchData() {
       try {
-        const [statsRes, sentRes, receivedRes] = await Promise.all([
+        // Build URLs with domain filter
+        const sentUrl = selectedDomain ? `/emails?domain=${encodeURIComponent(selectedDomain)}` : '/emails';
+        const receivedUrl = selectedDomain ? `/received-emails?domain=${encodeURIComponent(selectedDomain)}` : '/received-emails';
+        
+        const [statsRes, statsDomainRes, sentRes, receivedRes] = await Promise.all([
           fetch('/stats'),
-          fetch('/emails'),
-          fetch('/received-emails')
+          fetch('/stats/domains'),
+          fetch(sentUrl),
+          fetch(receivedUrl)
         ]);
 
         const stats = await statsRes.json();
+        const statsDomain = await statsDomainRes.json();
         const sent = await sentRes.json();
         const received = await receivedRes.json();
 
         if (stats.success) {
           updateStats(stats.data);
+        }
+        if (statsDomain.success) {
+          updateDomainStats(statsDomain.data);
         }
         if (sent.success) {
           sentEmails = sent.data;
@@ -515,6 +605,16 @@
       } catch (err) {
         showError('Failed to load data: ' + err.message);
       }
+    }
+
+    function updateDomainStats(domainStats) {
+      // Could add a domain breakdown section to the stats grid
+      console.log('Domain stats:', domainStats);
+    }
+
+    function onDomainChange() {
+      selectedDomain = document.getElementById('domain-selector').value;
+      refreshData();
     }
 
     function switchEmailTab(tab) {
@@ -563,6 +663,7 @@
             <div class="email-from">
               ${email.from_email}
               <span class="status-badge status-${email.status}">${email.status}</span>
+              ${selectedDomain === '' && email.domain ? `<span class="domain-tag">${email.domain}</span>` : ''}
             </div>
             <div class="email-subject">${email.subject}</div>
             <div class="email-date">${formatDate(email.sent_at)}</div>
@@ -574,7 +675,9 @@
           const attachmentIcon = hasAttachments ? ` 📎${email.attachments.length > 1 ? email.attachments.length : ''}` : '';
           return `
           <div class="email-item" onclick="viewReceivedEmail(${email.id})">
-            <div class="email-from">${email.from_email}</div>
+            <div class="email-from">${email.from_email}
+              ${selectedDomain === '' && email.domain ? `<span class="domain-tag">${email.domain}</span>` : ''}
+            </div>
             <div class="email-subject">${email.subject}${attachmentIcon}</div>
             <div class="email-date">${formatDate(email.received_at)}</div>
           </div>
@@ -919,6 +1022,8 @@
       btn.disabled = true;
       btn.textContent = '📤 Sending...';
       
+      const domain = document.getElementById('compose-domain').value;
+      const from = document.getElementById('compose-from').value;
       const to = document.getElementById('compose-to').value;
       const cc = document.getElementById('compose-cc').value;
       const bcc = document.getElementById('compose-bcc').value;
@@ -934,6 +1039,8 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            domain,
+            from,
             to: toArray,
             cc: ccArray,
             bcc: bccArray,
@@ -1053,7 +1160,11 @@
       if (e.target.id === 'modal') closeModal();
     });
 
+    // Domain selector change handler
+    document.getElementById('domain-selector').addEventListener('change', onDomainChange);
+
     // Initial load
+    fetchDomains();
     fetchData();
     // Refresh every 30 seconds
     setInterval(fetchData, 30000);
