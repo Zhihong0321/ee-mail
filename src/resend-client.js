@@ -5,6 +5,63 @@ import config from './config.js';
 const RESEND_API_BASE = 'https://api.resend.com';
 
 /**
+ * Fetch attachments list from Resend API
+ * Endpoint: GET /emails/receiving/{email_id}/attachments
+ * @param {string} emailId - The email_id from webhook (UUID format)
+ * @returns {Promise<Array>} - Array of attachment metadata with download URLs
+ */
+export async function fetchAttachments(emailId) {
+  if (!emailId) {
+    throw new Error('Email ID is required');
+  }
+
+  const url = `${RESEND_API_BASE}/emails/receiving/${emailId}/attachments`;
+  console.log(`🌐 Fetching attachments from: ${url}`);
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${config.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const status = response.status;
+    const errorText = await response.text();
+    console.error(`❌ Resend API error ${status}:`, errorText);
+    throw new Error(`Resend API error ${status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  console.log(`✅ Fetched ${data.length} attachments`);
+  return data;
+}
+
+/**
+ * Download attachment content from download URL
+ * @param {string} downloadUrl - The temporary download URL from Resend
+ * @returns {Promise<Buffer>} - Attachment content as buffer
+ */
+export async function downloadAttachment(downloadUrl) {
+  if (!downloadUrl) {
+    throw new Error('Download URL is required');
+  }
+
+  console.log(`📥 Downloading attachment from: ${downloadUrl.substring(0, 50)}...`);
+
+  const response = await fetch(downloadUrl);
+  
+  if (!response.ok) {
+    throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  console.log(`✅ Downloaded ${buffer.length} bytes`);
+  return buffer;
+}
+
+/**
  * Fetch received email content from Resend API
  * Endpoint: GET /emails/receiving/{email_id}
  * @param {string} emailId - The email_id from webhook (UUID format)

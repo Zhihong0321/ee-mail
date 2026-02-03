@@ -348,3 +348,59 @@ export async function updateReceivedEmail(emailId, data) {
 
   return result.rows[0];
 }
+
+/**
+ * Get a single sent email by database ID
+ */
+export async function getEmailById(id) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `SELECT * FROM emails WHERE id = $1`,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Get a single sent email by Resend ID
+ */
+export async function getEmailByResendId(resendId) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `SELECT * FROM emails WHERE resend_id = $1`,
+    [resendId]
+  );
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Get a single received email by database ID
+ */
+export async function getReceivedEmailById(id) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `SELECT * FROM received_emails WHERE id = $1`,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Get a single received email by email ID (Resend ID)
+ */
+export async function getReceivedEmailByEmailId(emailId) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `SELECT * FROM received_emails WHERE email_id = $1`,
+    [emailId]
+  );
+
+  return result.rows[0] || null;
+}

@@ -6,18 +6,23 @@ import path from 'path';
 import { URL } from 'url';
 import config, { validateConfig } from './config.js';
 import { sendEmail, sendBatch, sendTextEmail } from './email-service.js';
-import { 
-  isDatabaseAvailable, 
-  saveEmail, 
-  saveWebhook, 
+import {
+  isDatabaseAvailable,
+  saveEmail,
+  saveWebhook,
   updateEmailStatus,
   saveReceivedEmail,
   updateReceivedEmail,
   getStats,
   getRecentEmails,
-  getReceivedEmails
+  getReceivedEmails,
+  getEmailById,
+  getEmailByResendId,
+  getReceivedEmailById,
+  getReceivedEmailByEmailId
 } from './database.js';
 import { getReceivedEmailWithRetry } from './resend-client.js';
+import { fetchAttachments, downloadAttachment } from './resend-client.js';
 
 // Request body parser
 function parseBody(req) {
@@ -270,11 +275,168 @@ const routes = {
   'GET /received-emails': async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
-      const emails = isDatabaseAvailable() 
+      const emails = isDatabaseAvailable()
         ? await getReceivedEmails(limit)
         : [];
       json(res, 200, { success: true, data: emails });
     } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // View a single sent email by database ID or Resend ID
+  'GET /emails/:id': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const id = req.params.id;
+      let email;
+
+      // Try database ID first (numeric), then Resend ID (string)
+      if (/^\d+$/.test(id)) {
+        email = await getEmailById(parseInt(id));
+      } else {
+        email = await getEmailByResendId(id);
+      }
+
+      if (!email) {
+        return json(res, 404, { success: false, error: 'Email not found' });
+      }
+
+      json(res, 200, { success: true, data: email });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // View a single received email by database ID or email ID
+  'GET /received-emails/:id': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const id = req.params.id;
+      let email;
+
+      // Try database ID first (numeric), then email_id (string)
+      if (/^\d+$/.test(id)) {
+        email = await getReceivedEmailById(parseInt(id));
+      } else {
+        email = await getReceivedEmailByEmailId(id);
+      }
+
+      if (!email) {
+        return json(res, 404, { success: false, error: 'Email not found' });
+      }
+
+      json(res, 200, { success: true, data: email });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Get email attachments
+  'GET /received-emails/:id/attachments': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const id = req.params.id;
+      let email;
+
+      // Try database ID first (numeric), then email_id (string)
+      if (/^\d+$/.test(id)) {
+        email = await getReceivedEmailById(parseInt(id));
+      } else {
+        email = await getReceivedEmailByEmailId(id);
+      }
+
+      if (!email) {
+        return json(res, 404, { success: false, error: 'Email not found' });
+      }
+
+      if (!email.email_id) {
+        return json(res, 400, { success: false, error: 'Email has no Resend ID' });
+      }
+
+      const attachments = await fetchAttachments(email.email_id);
+      
+      json(res, 200, { 
+        success: true, 
+        data: attachments 
+      });
+    } catch (err) {
+      console.error('❌ Failed to fetch attachments:', err);
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Proxy download attachment (handles CORS and expired URLs)
+  'GET /attachments/:emailId/:filename': async (req, res) => {
+    try {
+      const { emailId, filename } = req.params;
+      
+      if (!emailId || !filename) {
+        return json(res, 400, { success: false, error: 'Missing emailId or filename' });
+      }
+
+      // Fetch fresh attachments to get valid download_url
+      const attachments = await fetchAttachments(emailId);
+      const attachment = attachments.find(a => a.filename === decodeURIComponent(filename));
+      
+      if (!attachment) {
+        return json(res, 404, { success: false, error: 'Attachment not found' });
+      }
+
+      // Download the attachment content
+      const content = await downloadAttachment(attachment.download_url);
+      
+      // Set appropriate headers
+      res.writeHead(200, {
+        'Content-Type': attachment.content_type || 'application/octet-stream',
+        'Content-Disposition': `inline; filename="${encodeURIComponent(attachment.filename)}"`,
+        'Content-Length': content.length,
+      });
+      res.end(content);
+    } catch (err) {
+      console.error('❌ Failed to download attachment:', err);
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Download attachment with download header
+  'GET /attachments/:emailId/:filename/download': async (req, res) => {
+    try {
+      const { emailId, filename } = req.params;
+      
+      if (!emailId || !filename) {
+        return json(res, 400, { success: false, error: 'Missing emailId or filename' });
+      }
+
+      // Fetch fresh attachments to get valid download_url
+      const attachments = await fetchAttachments(emailId);
+      const attachment = attachments.find(a => a.filename === decodeURIComponent(filename));
+      
+      if (!attachment) {
+        return json(res, 404, { success: false, error: 'Attachment not found' });
+      }
+
+      // Download the attachment content
+      const content = await downloadAttachment(attachment.download_url);
+      
+      // Set appropriate headers for download
+      res.writeHead(200, {
+        'Content-Type': attachment.content_type || 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(attachment.filename)}"`,
+        'Content-Length': content.length,
+      });
+      res.end(content);
+    } catch (err) {
+      console.error('❌ Failed to download attachment:', err);
       json(res, 500, { success: false, error: err.message });
     }
   },
@@ -327,11 +489,16 @@ const routes = {
       endpoints: [
         { method: 'GET', path: '/health', description: 'Health check' },
         { method: 'GET', path: '/stats', description: 'Email statistics (sent)' },
-        { method: 'GET', path: '/emails', description: 'Sent emails' },
-        { method: 'GET', path: '/received-emails', description: 'Received (inbound) emails' },
+        { method: 'GET', path: '/emails', description: 'List sent emails' },
+        { method: 'GET', path: '/emails/:id', description: 'View a single sent email by ID (database ID or Resend ID)' },
+        { method: 'GET', path: '/received-emails', description: 'List received (inbound) emails' },
+        { method: 'GET', path: '/received-emails/:id', description: 'View a single received email by ID (database ID or email ID)' },
         { method: 'POST', path: '/send', description: 'Send email' },
         { method: 'POST', path: '/send-batch', description: 'Send batch emails' },
         { method: 'POST', path: '/webhook', description: 'Receive webhooks & inbound emails' },
+        { method: 'GET', path: '/received-emails/:id/attachments', description: 'Get email attachments list' },
+        { method: 'GET', path: '/attachments/:emailId/:filename', description: 'View attachment inline' },
+        { method: 'GET', path: '/attachments/:emailId/:filename/download', description: 'Download attachment' },
       ],
     });
   },
@@ -355,11 +522,44 @@ export function createServer() {
     const pathname = url.pathname;
     const routeKey = `${req.method} ${pathname}`;
 
-    // API routes
+    // Attach query params to request
+    req.query = Object.fromEntries(url.searchParams.entries());
+
+    // API routes - exact match first
     const handler = routes[routeKey];
     if (handler) {
       await handler(req, res);
       return;
+    }
+
+    // Try to match dynamic routes (e.g., /emails/:id)
+    const routeParts = pathname.split('/').filter(Boolean);
+    for (const [routePattern, routeHandler] of Object.entries(routes)) {
+      const [method, pattern] = routePattern.split(' ');
+      if (method !== req.method) continue;
+
+      const patternParts = pattern.split('/').filter(Boolean);
+      if (patternParts.length !== routeParts.length) continue;
+
+      const params = {};
+      let isMatch = true;
+
+      for (let i = 0; i < patternParts.length; i++) {
+        if (patternParts[i].startsWith(':')) {
+          // Extract parameter name (remove ':')
+          const paramName = patternParts[i].slice(1);
+          params[paramName] = routeParts[i];
+        } else if (patternParts[i] !== routeParts[i]) {
+          isMatch = false;
+          break;
+        }
+      }
+
+      if (isMatch) {
+        req.params = params;
+        await routeHandler(req, res);
+        return;
+      }
     }
 
     // Serve admin page at root

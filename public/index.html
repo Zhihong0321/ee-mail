@@ -223,6 +223,92 @@
       border: none;
       background: white;
     }
+    .attachments-section {
+      margin: 1rem 0;
+      padding: 1rem;
+      background: #f8f9fa;
+      border-radius: 6px;
+      border: 1px solid #e9ecef;
+    }
+    .attachments-section h4 {
+      margin-bottom: 0.75rem;
+      color: #333;
+      font-size: 0.9rem;
+    }
+    .attachments-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .attachment-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.875rem;
+    }
+    .attachment-item:hover {
+      background: #f0f0f0;
+      border-color: #999;
+    }
+    .attachment-icon {
+      font-size: 1.25rem;
+    }
+    .attachment-info {
+      display: flex;
+      flex-direction: column;
+    }
+    .attachment-name {
+      font-weight: 500;
+      color: #333;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .attachment-size {
+      font-size: 0.75rem;
+      color: #666;
+    }
+    .attachment-actions {
+      display: flex;
+      gap: 0.25rem;
+      margin-left: 0.5rem;
+    }
+    .attachment-btn {
+      padding: 0.25rem 0.5rem;
+      border: none;
+      background: #e9ecef;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      color: #333;
+      transition: background 0.2s;
+    }
+    .attachment-btn:hover {
+      background: #dee2e6;
+    }
+    .attachment-image-preview {
+      max-width: 100px;
+      max-height: 100px;
+      border-radius: 4px;
+      object-fit: cover;
+    }
+    .loading-attachments {
+      color: #666;
+      font-size: 0.875rem;
+      padding: 0.5rem;
+    }
+    .error-attachments {
+      color: #d32f2f;
+      font-size: 0.875rem;
+      padding: 0.5rem;
+    }
     .tabs {
       display: flex;
       gap: 1rem;
@@ -311,6 +397,10 @@
             <span><strong>Date:</strong> <span id="modal-date">-</span></span>
             <span><strong>Status:</strong> <span id="modal-status">-</span></span>
           </div>
+        </div>
+        <div class="attachments-section" id="attachments-section" style="display:none;">
+          <h4>📎 Attachments (<span id="attachment-count">0</span>)</h4>
+          <div class="attachments-list" id="attachments-list"></div>
         </div>
         <div class="email-actions" style="margin: 1rem 0; padding: 1rem 0; border-top: 1px solid #e9ecef; border-bottom: 1px solid #e9ecef;">
           <button class="btn btn-primary" onclick="replyEmail()" id="btn-reply">↩️ Reply</button>
@@ -479,13 +569,16 @@
           </div>
         `).join('');
       } else {
-        listEl.innerHTML = emails.map(email => `
+        listEl.innerHTML = emails.map(email => {
+          const hasAttachments = email.attachments && email.attachments.length > 0;
+          const attachmentIcon = hasAttachments ? ` 📎${email.attachments.length > 1 ? email.attachments.length : ''}` : '';
+          return `
           <div class="email-item" onclick="viewReceivedEmail(${email.id})">
             <div class="email-from">${email.from_email}</div>
-            <div class="email-subject">${email.subject}</div>
+            <div class="email-subject">${email.subject}${attachmentIcon}</div>
             <div class="email-date">${formatDate(email.received_at)}</div>
           </div>
-        `).join('');
+        `;}).join('');
       }
     }
 
@@ -507,8 +600,12 @@
       }
     }
 
+    // Current email's attachments
+    let currentAttachments = [];
+
     function showEmailDetail(email, type) {
       currentEmail = email;
+      currentAttachments = [];
       document.getElementById('modal-subject').textContent = email.subject;
       document.getElementById('modal-from').textContent = email.from_email;
       document.getElementById('modal-to').textContent = type === 'sent' ? email.to_email : (email.to_email || 'me@eternalgy.me');
@@ -558,10 +655,163 @@
         refreshBtn.style.display = 'none';
       }
       
+      // Load attachments for received emails
+      const attachmentsSection = document.getElementById('attachments-section');
+      if (type === 'received' && email.id) {
+        loadAttachments(email.id);
+      } else {
+        attachmentsSection.style.display = 'none';
+      }
+      
       // Reset tab
       switchTab('html');
       
       document.getElementById('modal').classList.add('active');
+    }
+
+    async function loadAttachments(emailId) {
+      const attachmentsSection = document.getElementById('attachments-section');
+      const attachmentsList = document.getElementById('attachments-list');
+      const attachmentCount = document.getElementById('attachment-count');
+      
+      attachmentsList.innerHTML = '<div class="loading-attachments">Loading attachments...</div>';
+      attachmentsSection.style.display = 'block';
+      
+      try {
+        const response = await fetch(`/received-emails/${emailId}/attachments`);
+        const result = await response.json();
+        
+        if (result.success && result.data && result.data.length > 0) {
+          currentAttachments = result.data;
+          attachmentCount.textContent = result.data.length;
+          renderAttachments(result.data, emailId);
+        } else {
+          // Check if we have cached attachments in the email record
+          const email = receivedEmails.find(e => e.id === emailId);
+          if (email && email.attachments && email.attachments.length > 0) {
+            // Show cached attachment names without download capability
+            currentAttachments = email.attachments;
+            attachmentCount.textContent = email.attachments.length;
+            renderCachedAttachments(email.attachments);
+          } else {
+            attachmentsSection.style.display = 'none';
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load attachments:', err);
+        // Try to show cached attachments
+        const email = receivedEmails.find(e => e.id === emailId);
+        if (email && email.attachments && email.attachments.length > 0) {
+          currentAttachments = email.attachments;
+          attachmentCount.textContent = email.attachments.length;
+          renderCachedAttachments(email.attachments);
+        } else {
+          attachmentsSection.style.display = 'none';
+        }
+      }
+    }
+
+    function renderAttachments(attachments, emailId) {
+      const attachmentsList = document.getElementById('attachments-list');
+      
+      attachmentsList.innerHTML = attachments.map(att => {
+        const icon = getAttachmentIcon(att.content_type);
+        const size = formatFileSize(att.size);
+        const isImage = att.content_type && att.content_type.startsWith('image/');
+        
+        return `
+          <div class="attachment-item" title="${escapeHtml(att.filename)}">
+            <span class="attachment-icon">${icon}</span>
+            <div class="attachment-info">
+              <span class="attachment-name">${escapeHtml(att.filename)}</span>
+              <span class="attachment-size">${size}</span>
+            </div>
+            <div class="attachment-actions">
+              ${isImage ? `<button class="attachment-btn" onclick="viewAttachment('${emailId}', '${encodeURIComponent(att.filename)}', '${att.content_type}')" title="View">👁️</button>` : ''}
+              <button class="attachment-btn" onclick="downloadAttachmentFile('${emailId}', '${encodeURIComponent(att.filename)}')" title="Download">⬇️</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderCachedAttachments(attachments) {
+      const attachmentsList = document.getElementById('attachments-list');
+      
+      attachmentsList.innerHTML = attachments.map(att => {
+        const icon = getAttachmentIcon(att.content_type);
+        const size = formatFileSize(att.size);
+        
+        return `
+          <div class="attachment-item" title="${escapeHtml(att.filename)} (Download unavailable - click to retry)">
+            <span class="attachment-icon">${icon}</span>
+            <div class="attachment-info">
+              <span class="attachment-name">${escapeHtml(att.filename)}</span>
+              <span class="attachment-size">${size} (cached)</span>
+            </div>
+          </div>
+        `;
+      }).join('') + '<div class="loading-attachments">Refresh to enable downloads</div>';
+    }
+
+    function getAttachmentIcon(contentType) {
+      if (!contentType) return '📎';
+      if (contentType.startsWith('image/')) return '🖼️';
+      if (contentType.startsWith('video/')) return '🎬';
+      if (contentType.startsWith('audio/')) return '🎵';
+      if (contentType.includes('pdf')) return '📄';
+      if (contentType.includes('zip') || contentType.includes('compressed')) return '📦';
+      if (contentType.includes('word') || contentType.includes('document')) return '📝';
+      if (contentType.includes('excel') || contentType.includes('sheet')) return '📊';
+      if (contentType.includes('powerpoint') || contentType.includes('presentation')) return '📽️';
+      if (contentType.includes('text')) return '📃';
+      if (contentType.includes('json') || contentType.includes('xml')) return '🔧';
+      return '📎';
+    }
+
+    function formatFileSize(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    async function viewAttachment(emailId, filename, contentType) {
+      try {
+        const url = `/attachments/${emailId}/${filename}`;
+        
+        // For images, open in new tab
+        if (contentType && contentType.startsWith('image/')) {
+          window.open(url, '_blank');
+        } 
+        // For PDFs, open in new tab
+        else if (contentType && contentType.includes('pdf')) {
+          window.open(url, '_blank');
+        }
+        // For other types, try to open or download
+        else {
+          window.open(url, '_blank');
+        }
+      } catch (err) {
+        alert('❌ Failed to open attachment: ' + err.message);
+      }
+    }
+
+    async function downloadAttachmentFile(emailId, filename) {
+      try {
+        const url = `/attachments/${emailId}/${filename}/download`;
+        
+        // Create a temporary link to trigger download
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = decodeURIComponent(filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        alert('❌ Failed to download attachment: ' + err.message);
+      }
     }
 
     // Compose modal functions
