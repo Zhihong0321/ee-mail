@@ -486,6 +486,21 @@
             <textarea id="compose-body" rows="10" required
               style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-family: monospace;"></textarea>
           </div>
+          
+          <!-- Attachments Section -->
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.25rem; color: #666; font-size: 0.875rem;">
+              📎 Attachments <span style="color: #999; font-size: 0.75rem;">(Max 10MB total)</span>
+            </label>
+            <input type="file" id="compose-attachments" multiple onchange="handleAttachmentSelect(event)"
+              style="display: none;">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('compose-attachments').click()">
+              + Add File
+            </button>
+            <div id="compose-attachment-list" style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
+            <div id="compose-attachment-error" style="color: #d32f2f; font-size: 0.875rem; margin-top: 0.25rem; display: none;"></div>
+          </div>
+          
           <div style="display: flex; gap: 0.5rem;">
             <button type="submit" class="btn btn-primary" id="compose-send-btn">📧 Send</button>
             <button type="button" class="btn btn-secondary" onclick="closeComposeModal()">Cancel</button>
@@ -917,6 +932,82 @@
       }
     }
 
+    // Compose attachments storage
+    let composeAttachments = [];
+    const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
+    
+    function handleAttachmentSelect(event) {
+      const files = Array.from(event.target.files);
+      const errorEl = document.getElementById('compose-attachment-error');
+      const listEl = document.getElementById('compose-attachment-list');
+      
+      errorEl.style.display = 'none';
+      errorEl.textContent = '';
+      
+      // Check total size
+      const currentSize = composeAttachments.reduce((sum, att) => sum + (att.size || 0), 0);
+      const newSize = files.reduce((sum, file) => sum + file.size, 0);
+      
+      if (currentSize + newSize > MAX_ATTACHMENT_SIZE) {
+        errorEl.textContent = '❌ Total attachment size exceeds 10MB limit';
+        errorEl.style.display = 'block';
+        return;
+      }
+      
+      // Process each file
+      files.forEach(file => {
+        if (file.size > MAX_ATTACHMENT_SIZE) {
+          errorEl.textContent = `❌ "${file.name}" exceeds 10MB limit`;
+          errorEl.style.display = 'block';
+          return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const base64Content = e.target.result.split(',')[1]; // Remove data:... prefix
+          composeAttachments.push({
+            filename: file.name,
+            content: base64Content,
+            size: file.size,
+            contentType: file.type
+          });
+          renderComposeAttachments();
+        };
+        reader.readAsDataURL(file);
+      });
+      
+      // Clear input so same file can be selected again
+      event.target.value = '';
+    }
+    
+    function renderComposeAttachments() {
+      const listEl = document.getElementById('compose-attachment-list');
+      
+      if (composeAttachments.length === 0) {
+        listEl.innerHTML = '';
+        return;
+      }
+      
+      const totalSize = composeAttachments.reduce((sum, att) => sum + att.size, 0);
+      
+      listEl.innerHTML = composeAttachments.map((att, index) => `
+        <div class="attachment-item" style="background: #f8f9fa;">
+          <span class="attachment-icon">📎</span>
+          <div class="attachment-info">
+            <span class="attachment-name" title="${escapeHtml(att.filename)}">${escapeHtml(att.filename)}</span>
+            <span class="attachment-size">${formatFileSize(att.size)}</span>
+          </div>
+          <button type="button" class="attachment-btn" onclick="removeComposeAttachment(${index})" title="Remove">✕</button>
+        </div>
+      `).join('') + `<div style="width: 100%; font-size: 0.75rem; color: #666; margin-top: 0.25rem;">Total: ${formatFileSize(totalSize)} / 10MB</div>`;
+    }
+    
+    function removeComposeAttachment(index) {
+      composeAttachments.splice(index, 1);
+      renderComposeAttachments();
+      document.getElementById('compose-attachment-error').style.display = 'none';
+    }
+
     // Compose modal functions
     let composeMode = 'new'; // 'new', 'reply', 'reply-all', 'forward'
     
@@ -929,9 +1020,12 @@
       const subjectInput = document.getElementById('compose-subject');
       const bodyInput = document.getElementById('compose-body');
       
-      // Reset form
+      // Reset form and attachments
       document.getElementById('compose-form').reset();
       document.getElementById('compose-bcc-row').style.display = 'none';
+      composeAttachments = [];
+      renderComposeAttachments();
+      document.getElementById('compose-attachment-error').style.display = 'none';
       
       if (mode === 'new') {
         title.textContent = 'New Message';
@@ -1034,6 +1128,14 @@
       const ccArray = cc ? cc.split(',').map(e => e.trim()).filter(Boolean) : undefined;
       const bccArray = bcc ? bcc.split(',').map(e => e.trim()).filter(Boolean) : undefined;
       
+      // Prepare attachments payload
+      const attachments = composeAttachments.length > 0 
+        ? composeAttachments.map(att => ({
+            filename: att.filename,
+            content: att.content
+          }))
+        : undefined;
+      
       try {
         const response = await fetch('/send', {
           method: 'POST',
@@ -1047,13 +1149,14 @@
             subject: subject,
             text: body,
             html: `<pre style="font-family: Arial, sans-serif; white-space: pre-wrap;">${escapeHtml(body)}</pre>`,
+            attachments,
           })
         });
         
         const result = await response.json();
         
         if (result.success) {
-          alert('✅ Email sent successfully!');
+          alert('✅ Email sent successfully!' + (attachments ? ` (${attachments.length} attachment${attachments.length > 1 ? 's' : ''})` : ''));
           closeComposeModal();
           refreshData();
         } else {
