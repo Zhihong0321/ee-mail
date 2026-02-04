@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Keys - EE-Mail Admin</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      line-height: 1.6;
+    }
+    .header {
+      background: #1a1a2e;
+      color: white;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { font-size: 1.5rem; }
+    .header .nav {
+      display: flex;
+      gap: 1rem;
+    }
+    .header .nav a {
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .header .nav a:hover {
+      background: rgba(255,255,255,0.1);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    .page-title {
+      margin-bottom: 1.5rem;
+    }
+    .page-title h2 {
+      font-size: 1.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .page-title p {
+      color: #666;
+    }
+    .info-box {
+      background: #e3f2fd;
+      border-left: 4px solid #1976d2;
+      padding: 1rem;
+      border-radius: 4px;
+      margin-bottom: 2rem;
+    }
+    .info-box h3 {
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+      color: #1565c0;
+    }
+    .info-box p {
+      font-size: 0.875rem;
+      color: #0d47a1;
+      margin-bottom: 0.25rem;
+    }
+    .info-box code {
+      background: #bbdefb;
+      padding: 0.125rem 0.25rem;
+      border-radius: 3px;
+      font-family: monospace;
+    }
+    .content-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #1a1a2e;
+      color: white;
+    }
+    .btn-primary:hover { background: #2a2a4e; }
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: white;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+    .btn-secondary:hover { background: #f5f5f5; }
+    .btn-danger {
+      background: #dc3545;
+      color: white;
+    }
+    .btn-danger:hover { background: #c82333; }
+    .btn-success {
+      background: #28a745;
+      color: white;
+    }
+    .btn-success:hover { background: #218838; }
+    .api-keys-grid {
+      display: grid;
+      gap: 1rem;
+    }
+    .api-key-card {
+      background: white;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .api-key-card.inactive {
+      opacity: 0.6;
+      background: #f8f9fa;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .domain-name {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #1a1a2e;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .status-active {
+      background: #e8f5e9;
+      color: #388e3c;
+    }
+    .status-inactive {
+      background: #ffebee;
+      color: #d32f2f;
+    }
+    .card-body {
+      margin-bottom: 1rem;
+    }
+    .field-group {
+      margin-bottom: 0.75rem;
+    }
+    .field-label {
+      font-size: 0.75rem;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 0.25rem;
+    }
+    .field-value {
+      font-family: monospace;
+      font-size: 0.875rem;
+      color: #333;
+      background: #f8f9fa;
+      padding: 0.5rem;
+      border-radius: 4px;
+      word-break: break-all;
+    }
+    .field-value.masked {
+      letter-spacing: 2px;
+    }
+    .card-meta {
+      font-size: 0.75rem;
+      color: #999;
+      margin-top: 0.5rem;
+    }
+    .card-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: #999;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #666;
+    }
+    .error {
+      background: #ffebee;
+      color: #d32f2f;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+    .success {
+      background: #e8f5e9;
+      color: #388e3c;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: white;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 600px;
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #e9ecef;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: #666;
+    }
+    .modal-body {
+      padding: 1.5rem;
+    }
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 0.25rem;
+      color: #666;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      font-family: inherit;
+    }
+    .form-group textarea {
+      font-family: monospace;
+      resize: vertical;
+      min-height: 80px;
+    }
+    .form-group .help-text {
+      font-size: 0.75rem;
+      color: #999;
+      margin-top: 0.25rem;
+    }
+    .form-group .checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .form-group input[type="checkbox"] {
+      width: auto;
+    }
+    .modal-footer {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      margin-top: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🔑 API Keys Management</h1>
+    <div class="nav">
+      <a href="/">← Back to Email Admin</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="page-title">
+      <h2>Resend API Keys</h2>
+      <p>Manage API keys for each email domain</p>
+    </div>
+
+    <div class="info-box">
+      <h3>ℹ️ How It Works</h3>
+      <p>• Each domain requires its own Resend API key (1 key = 1 domain)</p>
+      <p>• Keys stored here override environment variables</p>
+      <p>• Get your API keys from: <a href="https://resend.com/api-keys" target="_blank" style="color: #1565c0;">resend.com/api-keys</a></p>
+      <p>• Format: <code>re_xxxxxxxxxxxxxxxxxx</code></p>
+    </div>
+
+    <div id="error"></div>
+    <div id="success"></div>
+
+    <div class="content-header">
+      <h3>Configured API Keys</h3>
+      <button class="btn btn-primary" onclick="openCreateModal()">➕ Add API Key</button>
+    </div>
+
+    <div id="api-keys-content">
+      <div class="loading">Loading API keys...</div>
+    </div>
+  </div>
+
+  <!-- Create/Edit Modal -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Add API Key</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="api-key-form" onsubmit="saveApiKey(event)">
+          <input type="hidden" id="edit-id">
+          
+          <div class="form-group">
+            <label>Domain *</label>
+            <input type="text" id="domain" required placeholder="e.g., eternalgy.me" pattern="[a-z0-9.-]+">
+            <div class="help-text">Lowercase letters, numbers, dots, and dashes only</div>
+          </div>
+
+          <div class="form-group">
+            <label>Resend API Key *</label>
+            <textarea id="api-key" required placeholder="re_xxxxxxxxxxxxxxxxxxxx"></textarea>
+            <div class="help-text">Get from resend.com/api-keys</div>
+          </div>
+
+          <div class="form-group">
+            <label>Description (Optional)</label>
+            <input type="text" id="description" placeholder="e.g., Production API key">
+          </div>
+
+          <div class="form-group">
+            <div class="checkbox-wrapper">
+              <input type="checkbox" id="is-active" checked>
+              <label for="is-active" style="margin-bottom: 0;">Active</label>
+            </div>
+            <div class="help-text">Inactive keys won't be used</div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="btn-submit">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let apiKeys = [];
+    let editingId = null;
+
+    // Fetch API keys
+    async function fetchApiKeys() {
+      const contentEl = document.getElementById('api-keys-content');
+      contentEl.innerHTML = '<div class="loading">Loading API keys...</div>';
+      
+      try {
+        const res = await fetch('/api-keys');
+        const result = await res.json();
+        
+        if (result.success) {
+          apiKeys = result.data;
+          renderApiKeys(apiKeys);
+        } else {
+          contentEl.innerHTML = `<div class="error">Failed to load API keys: ${result.error}</div>`;
+        }
+      } catch (err) {
+        contentEl.innerHTML = `<div class="error">Failed to load API keys: ${err.message}</div>`;
+      }
+    }
+
+    // Render API keys
+    function renderApiKeys(keys) {
+      const contentEl = document.getElementById('api-keys-content');
+      
+      if (!keys || keys.length === 0) {
+        contentEl.innerHTML = `
+          <div class="empty-state">
+            <h3>No API Keys Configured</h3>
+            <p>Add your first Resend API key to start sending emails</p>
+            <button class="btn btn-primary" onclick="openCreateModal()" style="margin-top: 1rem;">
+              ➕ Add API Key
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      contentEl.innerHTML = `
+        <div class="api-keys-grid">
+          ${keys.map(key => renderApiKeyCard(key)).join('')}
+        </div>
+      `;
+    }
+
+    // Render single API key card
+    function renderApiKeyCard(key) {
+      const maskedKey = maskApiKey(key.api_key);
+      const createdDate = new Date(key.created_at).toLocaleDateString();
+      const updatedDate = new Date(key.updated_at).toLocaleDateString();
+      const statusClass = key.is_active ? 'status-active' : 'status-inactive';
+      const statusText = key.is_active ? 'Active' : 'Inactive';
+      const cardClass = key.is_active ? '' : 'inactive';
+
+      return `
+        <div class="api-key-card ${cardClass}">
+          <div class="card-header">
+            <div class="domain-name">${key.domain}</div>
+            <span class="status-badge ${statusClass}">${statusText}</span>
+          </div>
+          <div class="card-body">
+            <div class="field-group">
+              <div class="field-label">API Key</div>
+              <div class="field-value masked" id="key-${key.id}">${maskedKey}</div>
+            </div>
+            ${key.description ? `
+              <div class="field-group">
+                <div class="field-label">Description</div>
+                <div class="field-value">${escapeHtml(key.description)}</div>
+              </div>
+            ` : ''}
+            <div class="card-meta">
+              Created: ${createdDate} • Updated: ${updatedDate}
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="btn btn-secondary" onclick="toggleKeyVisibility(${key.id}, '${escapeHtml(key.api_key)}')">
+              👁️ Show/Hide
+            </button>
+            <button class="btn btn-secondary" onclick="openEditModal(${key.id})">
+              ✏️ Edit
+            </button>
+            <button class="btn btn-secondary" onclick="toggleActive(${key.id}, ${!key.is_active})">
+              ${key.is_active ? '⏸️ Deactivate' : '▶️ Activate'}
+            </button>
+            <button class="btn btn-danger" onclick="deleteApiKey(${key.id}, '${key.domain}')">
+              🗑️ Delete
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Mask API key (show first 6 and last 4 characters)
+    function maskApiKey(key) {
+      if (!key || key.length < 10) return '••••••••••';
+      return key.substring(0, 6) + '••••••••••' + key.substring(key.length - 4);
+    }
+
+    // Toggle key visibility
+    function toggleKeyVisibility(id, fullKey) {
+      const el = document.getElementById(`key-${id}`);
+      if (el.textContent.includes('••')) {
+        el.textContent = fullKey;
+        el.classList.remove('masked');
+      } else {
+        el.textContent = maskApiKey(fullKey);
+        el.classList.add('masked');
+      }
+    }
+
+    // Open create modal
+    function openCreateModal() {
+      editingId = null;
+      document.getElementById('modal-title').textContent = 'Add API Key';
+      document.getElementById('api-key-form').reset();
+      document.getElementById('edit-id').value = '';
+      document.getElementById('is-active').checked = true;
+      document.getElementById('domain').readOnly = false;
+      document.getElementById('modal').classList.add('active');
+    }
+
+    // Open edit modal
+    function openEditModal(id) {
+      const key = apiKeys.find(k => k.id === id);
+      if (!key) return;
+
+      editingId = id;
+      document.getElementById('modal-title').textContent = 'Edit API Key';
+      document.getElementById('edit-id').value = id;
+      document.getElementById('domain').value = key.domain;
+      document.getElementById('domain').readOnly = true;
+      document.getElementById('api-key').value = key.api_key;
+      document.getElementById('description').value = key.description || '';
+      document.getElementById('is-active').checked = key.is_active;
+      document.getElementById('modal').classList.add('active');
+    }
+
+    // Close modal
+    function closeModal() {
+      document.getElementById('modal').classList.remove('active');
+      editingId = null;
+    }
+
+    // Save API key (create or update)
+    async function saveApiKey(event) {
+      event.preventDefault();
+      
+      const btn = document.getElementById('btn-submit');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      
+      const id = document.getElementById('edit-id').value;
+      const domain = document.getElementById('domain').value.toLowerCase().trim();
+      const apiKey = document.getElementById('api-key').value.trim();
+      const description = document.getElementById('description').value.trim();
+      const isActive = document.getElementById('is-active').checked;
+      
+      try {
+        let response;
+        
+        if (id) {
+          // Update existing
+          response = await fetch(`/api-keys/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKey, description, is_active: isActive })
+          });
+        } else {
+          // Create new
+          response = await fetch('/api-keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain, api_key: apiKey, description })
+          });
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          showSuccess(id ? '✅ API key updated successfully' : '✅ API key added successfully');
+          closeModal();
+          await fetchApiKeys();
+        } else {
+          showError('Failed to save API key: ' + result.error);
+        }
+      } catch (err) {
+        showError('Error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save';
+      }
+    }
+
+    // Toggle active status
+    async function toggleActive(id, newStatus) {
+      try {
+        const response = await fetch(`/api-keys/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: newStatus })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          showSuccess(`✅ API key ${newStatus ? 'activated' : 'deactivated'}`);
+          await fetchApiKeys();
+        } else {
+          showError('Failed to update status: ' + result.error);
+        }
+      } catch (err) {
+        showError('Error: ' + err.message);
+      }
+    }
+
+    // Delete API key
+    async function deleteApiKey(id, domain) {
+      if (!confirm(`Are you sure you want to delete the API key for ${domain}?\n\nEmails to this domain will fail until a new key is added.`)) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/api-keys/${id}`, {
+          method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          showSuccess(`✅ API key deleted: ${domain}`);
+          await fetchApiKeys();
+        } else {
+          showError('Failed to delete API key: ' + result.error);
+        }
+      } catch (err) {
+        showError('Error: ' + err.message);
+      }
+    }
+
+    // Show error
+    function showError(msg) {
+      const errorEl = document.getElementById('error');
+      errorEl.innerHTML = `<div class="error">${msg}</div>`;
+      setTimeout(() => errorEl.innerHTML = '', 5000);
+    }
+
+    // Show success
+    function showSuccess(msg) {
+      const successEl = document.getElementById('success');
+      successEl.innerHTML = `<div class="success">${msg}</div>`;
+      setTimeout(() => successEl.innerHTML = '', 5000);
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Close modal on overlay click
+    document.getElementById('modal').addEventListener('click', (e) => {
+      if (e.target.id === 'modal') closeModal();
+    });
+
+    // Initial load
+    fetchApiKeys();
+  </script>
+</body>
+</html>
