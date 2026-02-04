@@ -683,3 +683,116 @@ export async function getApiKeysMap() {
 
   return map;
 }
+
+/**
+ * Get all agents
+ */
+export async function getAgents(limit = 1000) {
+  if (!pool) return [];
+
+  const result = await pool.query(`
+    SELECT id, bubble_id, name, email, contact, agent_type, slug, created_at
+    FROM agent
+    ORDER BY name ASC
+    LIMIT $1
+  `, [limit]);
+
+  return result.rows;
+}
+
+/**
+ * Get agent by bubble_id
+ */
+export async function getAgentByBubbleId(bubbleId) {
+  if (!pool) return null;
+
+  const result = await pool.query(`
+    SELECT id, bubble_id, name, email, contact, agent_type, slug, created_at
+    FROM agent
+    WHERE bubble_id = $1
+  `, [bubbleId]);
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Get all agent email accounts
+ */
+export async function getAgentEmailAccounts() {
+  if (!pool) return [];
+
+  const result = await pool.query(`
+    SELECT 
+      aea.id,
+      aea.agent_bubble_id,
+      aea.email_prefix,
+      aea.full_email,
+      aea.created_at,
+      a.name as agent_name,
+      a.contact as agent_contact
+    FROM agent_email_accounts aea
+    LEFT JOIN agent a ON a.bubble_id = aea.agent_bubble_id
+    ORDER BY aea.created_at DESC
+  `);
+
+  return result.rows;
+}
+
+/**
+ * Get email accounts for a specific agent
+ */
+export async function getAgentEmailAccountsByAgent(agentBubbleId) {
+  if (!pool) return [];
+
+  const result = await pool.query(`
+    SELECT id, agent_bubble_id, email_prefix, full_email, created_at
+    FROM agent_email_accounts
+    WHERE agent_bubble_id = $1
+    ORDER BY created_at DESC
+  `, [agentBubbleId]);
+
+  return result.rows;
+}
+
+/**
+ * Check if email prefix exists
+ */
+export async function emailPrefixExists(emailPrefix) {
+  if (!pool) return false;
+
+  const result = await pool.query(`
+    SELECT id FROM agent_email_accounts WHERE email_prefix = $1
+  `, [emailPrefix]);
+
+  return result.rows.length > 0;
+}
+
+/**
+ * Create agent email account
+ */
+export async function createAgentEmailAccount(agentBubbleId, emailPrefix, emailDomain = 'eternalgy.me') {
+  if (!pool) return null;
+
+  const fullEmail = `${emailPrefix}@${emailDomain}`;
+
+  const result = await pool.query(`
+    INSERT INTO agent_email_accounts (agent_bubble_id, email_prefix, full_email)
+    VALUES ($1, $2, $3)
+    RETURNING id, agent_bubble_id, email_prefix, full_email, created_at
+  `, [agentBubbleId, emailPrefix, fullEmail]);
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Delete agent email account
+ */
+export async function deleteAgentEmailAccount(id) {
+  if (!pool) return false;
+
+  const result = await pool.query(`
+    DELETE FROM agent_email_accounts WHERE id = $1
+  `, [id]);
+
+  return result.rowCount > 0;
+}

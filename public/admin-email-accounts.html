@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Email Accounts - EE-Mail Admin</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      line-height: 1.6;
+    }
+    .header {
+      background: #1a1a2e;
+      color: white;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { font-size: 1.5rem; }
+    .header .nav {
+      display: flex;
+      gap: 1rem;
+    }
+    .header .nav a {
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .header .nav a:hover {
+      background: rgba(255,255,255,0.1);
+    }
+    .container {
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    .page-title {
+      margin-bottom: 1.5rem;
+    }
+    .page-title h2 {
+      font-size: 1.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .page-title p {
+      color: #666;
+    }
+    .grid-layout {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+    .sidebar {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      padding: 1.5rem;
+      height: fit-content;
+      max-height: calc(100vh - 180px);
+      overflow-y: auto;
+    }
+    .sidebar h3 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      color: #333;
+    }
+    .agent-search {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+      font-size: 0.875rem;
+    }
+    .agent-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .agent-item {
+      padding: 0.75rem;
+      border: 1px solid #e9ecef;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .agent-item:hover {
+      background: #f8f9fa;
+      border-color: #1a1a2e;
+    }
+    .agent-item.active {
+      background: #1a1a2e;
+      color: white;
+      border-color: #1a1a2e;
+    }
+    .agent-item .name {
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+    .agent-item .meta {
+      font-size: 0.75rem;
+      color: #666;
+    }
+    .agent-item.active .meta {
+      color: rgba(255,255,255,0.7);
+    }
+    .main-content {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      padding: 1.5rem;
+    }
+    .content-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .content-header h3 {
+      font-size: 1.25rem;
+    }
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #1a1a2e;
+      color: white;
+    }
+    .btn-primary:hover { background: #2a2a4e; }
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: white;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+    .btn-secondary:hover { background: #f5f5f5; }
+    .btn-danger {
+      background: #dc3545;
+      color: white;
+    }
+    .btn-danger:hover { background: #c82333; }
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: #999;
+    }
+    .email-accounts-list {
+      display: grid;
+      gap: 1rem;
+    }
+    .email-account-card {
+      border: 1px solid #e9ecef;
+      border-radius: 6px;
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.2s;
+    }
+    .email-account-card:hover {
+      border-color: #1a1a2e;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .email-info {
+      flex: 1;
+    }
+    .email-address {
+      font-size: 1.125rem;
+      font-weight: 500;
+      color: #1a1a2e;
+      margin-bottom: 0.25rem;
+    }
+    .email-meta {
+      font-size: 0.75rem;
+      color: #666;
+    }
+    .email-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #666;
+    }
+    .error {
+      background: #ffebee;
+      color: #d32f2f;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+    .success {
+      background: #e8f5e9;
+      color: #388e3c;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: white;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 500px;
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #e9ecef;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: #666;
+    }
+    .modal-body {
+      padding: 1.5rem;
+    }
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 0.25rem;
+      color: #666;
+      font-size: 0.875rem;
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 0.875rem;
+    }
+    .form-group .help-text {
+      font-size: 0.75rem;
+      color: #999;
+      margin-top: 0.25rem;
+    }
+    .modal-footer {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📧 Agent Email Accounts</h1>
+    <div class="nav">
+      <a href="/">← Back to Email Admin</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="page-title">
+      <h2>Manage Email Aliases</h2>
+      <p>Assign @eternalgy.me email addresses to agents</p>
+    </div>
+
+    <div id="error"></div>
+    <div id="success"></div>
+
+    <div class="grid-layout">
+      <!-- Agent Sidebar -->
+      <div class="sidebar">
+        <h3>Select Agent</h3>
+        <input type="text" class="agent-search" id="agent-search" placeholder="🔍 Search agents...">
+        <div class="agent-list" id="agent-list">
+          <div class="loading">Loading agents...</div>
+        </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="main-content">
+        <div class="content-header">
+          <h3 id="content-title">Select an agent to view their email accounts</h3>
+          <button class="btn btn-primary" id="btn-create-email" onclick="openCreateModal()" disabled>
+            ✉️ Create Email Account
+          </button>
+        </div>
+
+        <div id="email-accounts-content">
+          <div class="empty-state">
+            👈 Select an agent from the sidebar
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Email Account Modal -->
+  <div class="modal-overlay" id="create-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Create Email Account</h3>
+        <button class="modal-close" onclick="closeCreateModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="create-form" onsubmit="createEmailAccount(event)">
+          <div class="form-group">
+            <label>Agent</label>
+            <input type="text" id="modal-agent-name" readonly style="background: #f5f5f5;">
+          </div>
+          <div class="form-group">
+            <label>Email Prefix *</label>
+            <input type="text" id="email-prefix" required pattern="[a-z0-9_-]+" 
+              placeholder="e.g., zhihong, john.smith">
+            <div class="help-text">Lowercase letters, numbers, dash, underscore only</div>
+          </div>
+          <div class="form-group">
+            <label>Domain</label>
+            <input type="text" id="email-domain" value="eternalgy.me" readonly style="background: #f5f5f5;">
+          </div>
+          <div class="form-group">
+            <label>Full Email Preview</label>
+            <input type="text" id="email-preview" readonly style="background: #f8f9fa; font-weight: 500;">
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="btn-submit-create">Create</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let agents = [];
+    let selectedAgent = null;
+    let emailAccounts = [];
+
+    // Fetch agents
+    async function fetchAgents() {
+      try {
+        const res = await fetch('/agents');
+        const result = await res.json();
+        
+        if (result.success) {
+          agents = result.data;
+          renderAgentList(agents);
+        } else {
+          showError('Failed to load agents: ' + result.error);
+        }
+      } catch (err) {
+        showError('Failed to load agents: ' + err.message);
+      }
+    }
+
+    // Render agent list
+    function renderAgentList(agentList) {
+      const listEl = document.getElementById('agent-list');
+      
+      if (!agentList || agentList.length === 0) {
+        listEl.innerHTML = '<div class="empty-state">No agents found</div>';
+        return;
+      }
+
+      listEl.innerHTML = agentList.map(agent => `
+        <div class="agent-item" onclick="selectAgent('${agent.bubble_id}')">
+          <div class="name">${agent.name || 'Unnamed Agent'}</div>
+          <div class="meta">${agent.contact || 'No contact'}</div>
+        </div>
+      `).join('');
+    }
+
+    // Search agents
+    document.getElementById('agent-search').addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      const filtered = agents.filter(agent => 
+        (agent.name || '').toLowerCase().includes(query) ||
+        (agent.contact || '').toLowerCase().includes(query) ||
+        (agent.email || '').toLowerCase().includes(query)
+      );
+      renderAgentList(filtered);
+    });
+
+    // Select agent
+    async function selectAgent(bubbleId) {
+      selectedAgent = agents.find(a => a.bubble_id === bubbleId);
+      
+      if (!selectedAgent) return;
+
+      // Update UI
+      document.querySelectorAll('.agent-item').forEach(el => el.classList.remove('active'));
+      event.target.closest('.agent-item').classList.add('active');
+      
+      document.getElementById('content-title').textContent = `Email Accounts for ${selectedAgent.name}`;
+      document.getElementById('btn-create-email').disabled = false;
+      
+      // Fetch email accounts
+      await fetchEmailAccounts(bubbleId);
+    }
+
+    // Fetch email accounts for agent
+    async function fetchEmailAccounts(agentBubbleId) {
+      const contentEl = document.getElementById('email-accounts-content');
+      contentEl.innerHTML = '<div class="loading">Loading email accounts...</div>';
+      
+      try {
+        const res = await fetch(`/agent-email-accounts?agent_bubble_id=${agentBubbleId}`);
+        const result = await res.json();
+        
+        if (result.success) {
+          emailAccounts = result.data;
+          renderEmailAccounts(emailAccounts);
+        } else {
+          contentEl.innerHTML = `<div class="error">Failed to load email accounts: ${result.error}</div>`;
+        }
+      } catch (err) {
+        contentEl.innerHTML = `<div class="error">Failed to load email accounts: ${err.message}</div>`;
+      }
+    }
+
+    // Render email accounts
+    function renderEmailAccounts(accounts) {
+      const contentEl = document.getElementById('email-accounts-content');
+      
+      if (!accounts || accounts.length === 0) {
+        contentEl.innerHTML = '<div class="empty-state">No email accounts yet. Create one above! 👆</div>';
+        return;
+      }
+
+      contentEl.innerHTML = `
+        <div class="email-accounts-list">
+          ${accounts.map(account => `
+            <div class="email-account-card">
+              <div class="email-info">
+                <div class="email-address">${account.full_email}</div>
+                <div class="email-meta">Created ${new Date(account.created_at).toLocaleDateString()}</div>
+              </div>
+              <div class="email-actions">
+                <button class="btn btn-danger" onclick="deleteEmailAccount(${account.id}, '${account.full_email}')">
+                  🗑️ Delete
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // Open create modal
+    function openCreateModal() {
+      if (!selectedAgent) return;
+      
+      document.getElementById('modal-agent-name').value = selectedAgent.name;
+      document.getElementById('email-prefix').value = '';
+      document.getElementById('email-preview').value = '@eternalgy.me';
+      document.getElementById('create-modal').classList.add('active');
+    }
+
+    // Close create modal
+    function closeCreateModal() {
+      document.getElementById('create-modal').classList.remove('active');
+    }
+
+    // Update email preview
+    document.getElementById('email-prefix').addEventListener('input', (e) => {
+      const prefix = e.target.value.toLowerCase();
+      const domain = document.getElementById('email-domain').value;
+      document.getElementById('email-preview').value = prefix ? `${prefix}@${domain}` : `@${domain}`;
+    });
+
+    // Create email account
+    async function createEmailAccount(event) {
+      event.preventDefault();
+      
+      const btn = document.getElementById('btn-submit-create');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+      
+      const emailPrefix = document.getElementById('email-prefix').value.toLowerCase();
+      const emailDomain = document.getElementById('email-domain').value;
+      
+      try {
+        const response = await fetch('/agent-email-accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agent_bubble_id: selectedAgent.bubble_id,
+            email_prefix: emailPrefix,
+            email_domain: emailDomain
+          })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          showSuccess(`✅ Email account created: ${result.data.full_email}`);
+          closeCreateModal();
+          await fetchEmailAccounts(selectedAgent.bubble_id);
+        } else {
+          showError('Failed to create email account: ' + result.error);
+        }
+      } catch (err) {
+        showError('Error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create';
+      }
+    }
+
+    // Delete email account
+    async function deleteEmailAccount(id, email) {
+      if (!confirm(`Are you sure you want to delete ${email}?`)) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/agent-email-accounts/${id}`, {
+          method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          showSuccess(`✅ Email account deleted: ${email}`);
+          await fetchEmailAccounts(selectedAgent.bubble_id);
+        } else {
+          showError('Failed to delete email account: ' + result.error);
+        }
+      } catch (err) {
+        showError('Error: ' + err.message);
+      }
+    }
+
+    // Show error
+    function showError(msg) {
+      const errorEl = document.getElementById('error');
+      errorEl.innerHTML = `<div class="error">${msg}</div>`;
+      setTimeout(() => errorEl.innerHTML = '', 5000);
+    }
+
+    // Show success
+    function showSuccess(msg) {
+      const successEl = document.getElementById('success');
+      successEl.innerHTML = `<div class="success">${msg}</div>`;
+      setTimeout(() => successEl.innerHTML = '', 5000);
+    }
+
+    // Close modal on overlay click
+    document.getElementById('create-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'create-modal') closeCreateModal();
+    });
+
+    // Initial load
+    fetchAgents();
+  </script>
+</body>
+</html>

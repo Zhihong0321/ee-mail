@@ -29,7 +29,14 @@ import {
   saveApiKey,
   getApiKeyById,
   updateApiKey,
-  deleteApiKey
+  deleteApiKey,
+  getAgents,
+  getAgentByBubbleId,
+  getAgentEmailAccounts,
+  getAgentEmailAccountsByAgent,
+  emailPrefixExists,
+  createAgentEmailAccount,
+  deleteAgentEmailAccount
 } from './database.js';
 import { getReceivedEmailWithRetry } from './resend-client.js';
 import { fetchAttachments, downloadAttachment } from './resend-client.js';
@@ -699,6 +706,135 @@ const routes = {
       clearApiKeysCache();
       
       json(res, 200, { success: true, message: 'API key deleted' });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // ============================================
+  // Agent Email Account Management (Admin UI)
+  // ============================================
+  
+  // Get all agents
+  'GET /agents': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const agents = await getAgents();
+      json(res, 200, { success: true, data: agents });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Get agent by bubble ID
+  'GET /agents/:bubbleId': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const agent = await getAgentByBubbleId(req.params.bubbleId);
+      
+      if (!agent) {
+        return json(res, 404, { success: false, error: 'Agent not found' });
+      }
+
+      json(res, 200, { success: true, data: agent });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Get all agent email accounts
+  'GET /agent-email-accounts': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const urlObj = new URL(req.url, `http://${req.headers.host}`);
+      const agentBubbleId = urlObj.searchParams.get('agent_bubble_id');
+
+      let accounts;
+      if (agentBubbleId) {
+        accounts = await getAgentEmailAccountsByAgent(agentBubbleId);
+      } else {
+        accounts = await getAgentEmailAccounts();
+      }
+
+      json(res, 200, { success: true, data: accounts });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Create agent email account
+  'POST /agent-email-accounts': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const body = await parseBody(req);
+      
+      if (!body.agent_bubble_id || !body.email_prefix) {
+        return json(res, 400, {
+          error: 'Missing required fields: agent_bubble_id, email_prefix',
+        });
+      }
+
+      // Validate email prefix (lowercase alphanumeric + dash/underscore)
+      const prefixRegex = /^[a-z0-9_-]+$/;
+      if (!prefixRegex.test(body.email_prefix)) {
+        return json(res, 400, {
+          error: 'Invalid email prefix. Use lowercase letters, numbers, dash, or underscore only.',
+        });
+      }
+
+      // Check if email prefix already exists
+      const exists = await emailPrefixExists(body.email_prefix);
+      if (exists) {
+        return json(res, 409, {
+          error: 'Email prefix already exists',
+        });
+      }
+
+      // Verify agent exists
+      const agent = await getAgentByBubbleId(body.agent_bubble_id);
+      if (!agent) {
+        return json(res, 404, {
+          error: 'Agent not found',
+        });
+      }
+
+      const emailDomain = body.email_domain || 'eternalgy.me';
+      const result = await createAgentEmailAccount(body.agent_bubble_id, body.email_prefix, emailDomain);
+      
+      json(res, 201, { success: true, data: result });
+    } catch (err) {
+      console.error('Create agent email account error:', err);
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // Delete agent email account
+  'DELETE /agent-email-accounts/:id': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const id = parseInt(req.params.id);
+      const deleted = await deleteAgentEmailAccount(id);
+      
+      if (!deleted) {
+        return json(res, 404, { success: false, error: 'Email account not found' });
+      }
+      
+      json(res, 200, { success: true, message: 'Email account deleted' });
     } catch (err) {
       json(res, 500, { success: false, error: err.message });
     }
