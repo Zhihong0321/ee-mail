@@ -34,7 +34,7 @@ import {
   getAgentByBubbleId,
   getAgentEmailAccounts,
   getAgentEmailAccountsByAgent,
-  emailPrefixExists,
+  agentEmailAssignmentExists,
   createAgentEmailAccount,
   deleteAgentEmailAccount
 } from './database.js';
@@ -786,19 +786,24 @@ const routes = {
         });
       }
 
+      const emailPrefix = body.email_prefix.trim().toLowerCase();
+      const emailDomain = (body.email_domain || 'eternalgy.me').trim().toLowerCase();
+
       // Validate email prefix (lowercase alphanumeric + dash/underscore)
       const prefixRegex = /^[a-z0-9_-]+$/;
-      if (!prefixRegex.test(body.email_prefix)) {
+      if (!prefixRegex.test(emailPrefix)) {
         return json(res, 400, {
           error: 'Invalid email prefix. Use lowercase letters, numbers, dash, or underscore only.',
         });
       }
 
-      // Check if email prefix already exists
-      const exists = await emailPrefixExists(body.email_prefix);
+      const fullEmail = `${emailPrefix}@${emailDomain}`;
+
+      // Prevent the same email from being assigned twice to the same agent.
+      const exists = await agentEmailAssignmentExists(body.agent_bubble_id, fullEmail);
       if (exists) {
         return json(res, 409, {
-          error: 'Email prefix already exists',
+          error: 'This email is already assigned to the selected agent',
         });
       }
 
@@ -810,8 +815,7 @@ const routes = {
         });
       }
 
-      const emailDomain = body.email_domain || 'eternalgy.me';
-      const result = await createAgentEmailAccount(body.agent_bubble_id, body.email_prefix, emailDomain);
+      const result = await createAgentEmailAccount(body.agent_bubble_id, emailPrefix, emailDomain);
       
       json(res, 201, { success: true, data: result });
     } catch (err) {

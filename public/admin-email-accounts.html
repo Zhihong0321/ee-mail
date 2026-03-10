@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agent Email Accounts - EE-Mail Admin</title>
+  <title>Agent Email Assignments - EE-Mail Admin</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -281,7 +281,7 @@
 </head>
 <body>
   <div class="header">
-    <h1>📧 Agent Email Accounts</h1>
+    <h1>📧 Agent Email Assignments</h1>
     <div class="nav">
       <a href="/">← Back to Email Admin</a>
     </div>
@@ -289,8 +289,8 @@
 
   <div class="container">
     <div class="page-title">
-      <h2>Manage Email Aliases</h2>
-      <p>Assign @eternalgy.me email addresses to agents</p>
+      <h2>Manage Email Assignments</h2>
+      <p>Assign or share @eternalgy.me email addresses across multiple agents</p>
     </div>
 
     <div id="error"></div>
@@ -309,10 +309,14 @@
       <!-- Main Content -->
       <div class="main-content">
         <div class="content-header">
-          <h3 id="content-title">Select an agent to view their email accounts</h3>
+          <h3 id="content-title">Select an agent to view their email assignments</h3>
           <button class="btn btn-primary" id="btn-create-email" onclick="openCreateModal()" disabled>
-            ✉️ Create Email Account
+            ✉️ Assign Email
           </button>
+        </div>
+
+        <div style="margin-bottom: 1rem; padding: 0.875rem 1rem; border-radius: 6px; background: #eef3ff; color: #1a1a2e; border: 1px solid #d7e0ff;">
+          The same email address can be assigned to more than one agent. This page manages assignments, not separate mailboxes.
         </div>
 
         <div id="email-accounts-content">
@@ -324,11 +328,11 @@
     </div>
   </div>
 
-  <!-- Create Email Account Modal -->
+  <!-- Assign Email Modal -->
   <div class="modal-overlay" id="create-modal">
     <div class="modal">
       <div class="modal-header">
-        <h3>Create Email Account</h3>
+        <h3>Assign Email To Agent</h3>
         <button class="modal-close" onclick="closeCreateModal()">&times;</button>
       </div>
       <div class="modal-body">
@@ -341,7 +345,7 @@
             <label>Email Prefix *</label>
             <input type="text" id="email-prefix" required pattern="[a-z0-9_-]+" 
               placeholder="e.g., zhihong, john.smith">
-            <div class="help-text">Lowercase letters, numbers, dash, underscore only</div>
+            <div class="help-text">Use an existing prefix to share the same email with another agent, or enter a new one.</div>
           </div>
           <div class="form-group">
             <label>Domain</label>
@@ -353,7 +357,7 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
-            <button type="submit" class="btn btn-primary" id="btn-submit-create">Create</button>
+            <button type="submit" class="btn btn-primary" id="btn-submit-create">Assign</button>
           </div>
         </form>
       </div>
@@ -420,17 +424,17 @@
       document.querySelectorAll('.agent-item').forEach(el => el.classList.remove('active'));
       event.target.closest('.agent-item').classList.add('active');
       
-      document.getElementById('content-title').textContent = `Email Accounts for ${selectedAgent.name}`;
+      document.getElementById('content-title').textContent = `Email Assignments for ${selectedAgent.name}`;
       document.getElementById('btn-create-email').disabled = false;
       
-      // Fetch email accounts
+      // Fetch email assignments
       await fetchEmailAccounts(bubbleId);
     }
 
-    // Fetch email accounts for agent
+    // Fetch email assignments for agent
     async function fetchEmailAccounts(agentBubbleId) {
       const contentEl = document.getElementById('email-accounts-content');
-      contentEl.innerHTML = '<div class="loading">Loading email accounts...</div>';
+      contentEl.innerHTML = '<div class="loading">Loading email assignments...</div>';
       
       try {
         const res = await fetch(`/agent-email-accounts?agent_bubble_id=${agentBubbleId}`);
@@ -440,19 +444,19 @@
           emailAccounts = result.data;
           renderEmailAccounts(emailAccounts);
         } else {
-          contentEl.innerHTML = `<div class="error">Failed to load email accounts: ${result.error}</div>`;
+          contentEl.innerHTML = `<div class="error">Failed to load email assignments: ${result.error}</div>`;
         }
       } catch (err) {
-        contentEl.innerHTML = `<div class="error">Failed to load email accounts: ${err.message}</div>`;
+        contentEl.innerHTML = `<div class="error">Failed to load email assignments: ${err.message}</div>`;
       }
     }
 
-    // Render email accounts
+    // Render email assignments
     function renderEmailAccounts(accounts) {
       const contentEl = document.getElementById('email-accounts-content');
       
       if (!accounts || accounts.length === 0) {
-        contentEl.innerHTML = '<div class="empty-state">No email accounts yet. Create one above! 👆</div>';
+        contentEl.innerHTML = '<div class="empty-state">No email assignments yet. Assign one above! 👆</div>';
         return;
       }
 
@@ -462,7 +466,7 @@
             <div class="email-account-card">
               <div class="email-info">
                 <div class="email-address">${account.full_email}</div>
-                <div class="email-meta">Created ${new Date(account.created_at).toLocaleDateString()}</div>
+                <div class="email-meta">Assigned ${new Date(account.created_at).toLocaleDateString()}</div>
               </div>
               <div class="email-actions">
                 <button class="btn btn-danger" onclick="deleteEmailAccount(${account.id}, '${account.full_email}')">
@@ -497,13 +501,13 @@
       document.getElementById('email-preview').value = prefix ? `${prefix}@${domain}` : `@${domain}`;
     });
 
-    // Create email account
+    // Assign email to agent
     async function createEmailAccount(event) {
       event.preventDefault();
       
       const btn = document.getElementById('btn-submit-create');
       btn.disabled = true;
-      btn.textContent = 'Creating...';
+      btn.textContent = 'Assigning...';
       
       const emailPrefix = document.getElementById('email-prefix').value.toLowerCase();
       const emailDomain = document.getElementById('email-domain').value;
@@ -522,21 +526,21 @@
         const result = await response.json();
         
         if (result.success) {
-          showSuccess(`✅ Email account created: ${result.data.full_email}`);
+          showSuccess(`✅ Email assigned: ${result.data.full_email}`);
           closeCreateModal();
           await fetchEmailAccounts(selectedAgent.bubble_id);
         } else {
-          showError('Failed to create email account: ' + result.error);
+          showError('Failed to assign email: ' + result.error);
         }
       } catch (err) {
         showError('Error: ' + err.message);
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Create';
+        btn.textContent = 'Assign';
       }
     }
 
-    // Delete email account
+    // Remove email assignment
     async function deleteEmailAccount(id, email) {
       if (!confirm(`Are you sure you want to delete ${email}?`)) {
         return;
@@ -550,10 +554,10 @@
         const result = await response.json();
         
         if (result.success) {
-          showSuccess(`✅ Email account deleted: ${email}`);
+          showSuccess(`✅ Email unassigned: ${email}`);
           await fetchEmailAccounts(selectedAgent.bubble_id);
         } else {
-          showError('Failed to delete email account: ' + result.error);
+          showError('Failed to remove email assignment: ' + result.error);
         }
       } catch (err) {
         showError('Error: ' + err.message);

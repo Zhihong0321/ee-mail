@@ -5,6 +5,10 @@ const { Pool } = pg;
 
 let pool = null;
 
+function quoteIdentifier(identifier) {
+  return `"${String(identifier).replace(/"/g, '""')}"`;
+}
+
 /**
  * Initialize database connection
  * @param {string} connectionString - PostgreSQL connection string
@@ -182,6 +186,73 @@ export async function initTables() {
 
       CREATE INDEX IF NOT EXISTS idx_api_keys_domain ON api_keys(domain);
       CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(is_active);
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_email_accounts (
+        id SERIAL PRIMARY KEY,
+        agent_bubble_id TEXT NOT NULL,
+        email_prefix TEXT NOT NULL,
+        full_email TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_agent_email_accounts_agent_bubble_id
+        ON agent_email_accounts(agent_bubble_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_email_accounts_full_email
+        ON agent_email_accounts(full_email);
+    `);
+
+    // Older setups may have enforced global uniqueness on email_prefix/full_email,
+    // which prevents sharing one email across multiple agents.
+    const agentEmailUniqueConstraints = await client.query(`
+      SELECT c.conname, pg_get_constraintdef(c.oid) AS definition
+      FROM pg_constraint c
+      JOIN pg_class t ON c.conrelid = t.oid
+      WHERE t.relname = 'agent_email_accounts'
+        AND c.contype = 'u'
+    `);
+
+    for (const constraint of agentEmailUniqueConstraints.rows) {
+      const definition = constraint.definition || '';
+      const blocksSharedAssignments =
+        /\((email_prefix|full_email)\)/i.test(definition) &&
+        !/agent_bubble_id/i.test(definition);
+
+      if (blocksSharedAssignments) {
+        await client.query(`
+          ALTER TABLE agent_email_accounts
+          DROP CONSTRAINT IF EXISTS ${quoteIdentifier(constraint.conname)}
+        `);
+        console.log(`✅ Dropped old unique constraint ${constraint.conname} on agent_email_accounts`);
+      }
+    }
+
+    const agentEmailIndexes = await client.query(`
+      SELECT indexname, indexdef
+      FROM pg_indexes
+      WHERE tablename = 'agent_email_accounts'
+    `);
+
+    for (const index of agentEmailIndexes.rows) {
+      const indexDef = index.indexdef || '';
+      const blocksSharedAssignments =
+        /CREATE UNIQUE INDEX/i.test(indexDef) &&
+        /\((email_prefix|full_email)\)/i.test(indexDef) &&
+        !/agent_bubble_id/i.test(indexDef) &&
+        index.indexname !== 'agent_email_accounts_pkey';
+
+      if (blocksSharedAssignments) {
+        await client.query(`
+          DROP INDEX IF EXISTS ${quoteIdentifier(index.indexname)}
+        `);
+        console.log(`✅ Dropped old unique index ${index.indexname} on agent_email_accounts`);
+      }
+    }
+
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_email_accounts_agent_full_email_unique
+      ON agent_email_accounts(agent_bubble_id, full_email)
     `);
 
     console.log('✅ Database tables initialized');
@@ -755,14 +826,17 @@ export async function getAgentEmailAccountsByAgent(agentBubbleId) {
 }
 
 /**
- * Check if email prefix exists
+ * Check if an email is already assigned to an agent
  */
-export async function emailPrefixExists(emailPrefix) {
+export async function agentEmailAssignmentExists(agentBubbleId, fullEmail) {
   if (!pool) return false;
 
   const result = await pool.query(`
-    SELECT id FROM agent_email_accounts WHERE email_prefix = $1
-  `, [emailPrefix]);
+    SELECT id
+    FROM agent_email_accounts
+    WHERE agent_bubble_id = $1
+      AND LOWER(full_email) = LOWER($2)
+  `, [agentBubbleId, fullEmail]);
 
   return result.rows.length > 0;
 }
@@ -773,7 +847,7 @@ export async function emailPrefixExists(emailPrefix) {
 export async function createAgentEmailAccount(agentBubbleId, emailPrefix, emailDomain = 'eternalgy.me') {
   if (!pool) return null;
 
-  const fullEmail = `${emailPrefix}@${emailDomain}`;
+  const fullEmail = `${emailPrefix}@${emailDomain}`.toLowerCase();
 
   const result = await pool.query(`
     INSERT INTO agent_email_accounts (agent_bubble_id, email_prefix, full_email)
