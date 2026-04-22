@@ -392,6 +392,60 @@ export async function getRecentEmails(limit = 50) {
   return result.rows;
 }
 
+function normalizeEmailSearchField(field) {
+  switch ((field || 'all').toLowerCase()) {
+    case 'title':
+    case 'subject':
+      return 'subject';
+    case 'sender':
+    case 'from':
+      return 'from_email';
+    case 'recipient':
+    case 'to':
+      return 'to_email';
+    case 'content':
+    case 'body':
+      return 'content';
+    default:
+      return 'all';
+  }
+}
+
+function buildEmailSearchWhereClause(search, field) {
+  const trimmedSearch = (search || '').trim();
+  if (!trimmedSearch) {
+    return { clause: '', values: [] };
+  }
+
+  const normalizedField = normalizeEmailSearchField(field);
+  const pattern = `%${trimmedSearch}%`;
+
+  switch (normalizedField) {
+    case 'subject':
+      return { clause: 'subject ILIKE $1', values: [pattern] };
+    case 'from_email':
+      return { clause: 'from_email ILIKE $1', values: [pattern] };
+    case 'to_email':
+      return { clause: 'to_email ILIKE $1', values: [pattern] };
+    case 'content':
+      return {
+        clause: '(COALESCE(text_content, \'\') ILIKE $1 OR COALESCE(html_content, \'\') ILIKE $1)',
+        values: [pattern],
+      };
+    default:
+      return {
+        clause: `(
+          subject ILIKE $1
+          OR from_email ILIKE $1
+          OR to_email ILIKE $1
+          OR COALESCE(text_content, '') ILIKE $1
+          OR COALESCE(html_content, '') ILIKE $1
+        )`,
+        values: [pattern],
+      };
+  }
+}
+
 /**
  * Save received (inbound) email
  */
@@ -591,6 +645,70 @@ export async function getReceivedEmailsByDomain(domain, limit = 50) {
   const result = await pool.query(
     `SELECT * FROM received_emails WHERE domain = $1 ORDER BY received_at DESC LIMIT $2`,
     [domain, limit]
+  );
+
+  return result.rows;
+}
+
+/**
+ * Search sent emails with optional domain filter
+ */
+export async function searchEmails({ search, field = 'all', domain = null, limit = 50 } = {}) {
+  if (!pool) return [];
+
+  const values = [];
+  const conditions = [];
+
+  if (domain) {
+    values.push(domain);
+    conditions.push(`domain = $${values.length}`);
+  }
+
+  const searchFilter = buildEmailSearchWhereClause(search, field);
+  if (searchFilter.clause) {
+    const shiftedClause = searchFilter.clause.replace(/\$(\d+)/g, (_, n) => `$${values.length + Number(n)}`);
+    conditions.push(shiftedClause);
+    values.push(...searchFilter.values);
+  }
+
+  values.push(limit);
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const result = await pool.query(
+    `SELECT * FROM emails ${whereClause} ORDER BY sent_at DESC LIMIT $${values.length}`,
+    values
+  );
+
+  return result.rows;
+}
+
+/**
+ * Search received emails with optional domain filter
+ */
+export async function searchReceivedEmails({ search, field = 'all', domain = null, limit = 50 } = {}) {
+  if (!pool) return [];
+
+  const values = [];
+  const conditions = [];
+
+  if (domain) {
+    values.push(domain);
+    conditions.push(`domain = $${values.length}`);
+  }
+
+  const searchFilter = buildEmailSearchWhereClause(search, field);
+  if (searchFilter.clause) {
+    const shiftedClause = searchFilter.clause.replace(/\$(\d+)/g, (_, n) => `$${values.length + Number(n)}`);
+    conditions.push(shiftedClause);
+    values.push(...searchFilter.values);
+  }
+
+  values.push(limit);
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const result = await pool.query(
+    `SELECT * FROM received_emails ${whereClause} ORDER BY received_at DESC LIMIT $${values.length}`,
+    values
   );
 
   return result.rows;

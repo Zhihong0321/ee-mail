@@ -85,6 +85,44 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       overflow: hidden;
     }
+    .list-toolbar {
+      background: white;
+      border-radius: 8px 8px 0 0;
+      border-bottom: 1px solid #e9ecef;
+      padding: 1rem 1.5rem;
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .search-input {
+      flex: 1 1 320px;
+      min-width: 220px;
+      padding: 0.75rem 0.875rem;
+      border: 1px solid #d6dbe1;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      outline: none;
+    }
+    .search-input:focus,
+    .search-select:focus {
+      border-color: #1a1a2e;
+      box-shadow: 0 0 0 3px rgba(26,26,46,0.08);
+    }
+    .search-select {
+      min-width: 170px;
+      padding: 0.75rem 0.875rem;
+      border: 1px solid #d6dbe1;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      background: white;
+      outline: none;
+    }
+    .search-status {
+      width: 100%;
+      color: #666;
+      font-size: 0.8125rem;
+    }
     .email-list-header {
       padding: 1rem 1.5rem;
       background: #f8f9fa;
@@ -377,6 +415,23 @@
     </div>
 
     <div class="email-list">
+      <div class="list-toolbar">
+        <input
+          type="text"
+          id="email-search"
+          class="search-input"
+          placeholder="Search title, from, to, or content..."
+        >
+        <select id="email-search-field" class="search-select">
+          <option value="all">All fields</option>
+          <option value="title">Title / Subject</option>
+          <option value="sender">Sender / From</option>
+          <option value="to">Recipient / To</option>
+          <option value="content">Content</option>
+        </select>
+        <button class="btn btn-secondary" type="button" onclick="clearSearch()">Clear</button>
+        <div class="search-status" id="search-status">Showing the latest emails.</div>
+      </div>
       <div class="email-list-header">
         <h3 id="email-list-title">Sent Emails</h3>
         <span id="email-count">Loading...</span>
@@ -520,6 +575,36 @@
     let availableDomains = [];
     let selectedDomain = ''; // Empty string means all domains
     let domainSenders = {}; // Map of domain -> default sender
+    let searchQuery = '';
+    let searchField = 'all';
+    let searchDebounceTimer = null;
+
+    function buildEmailListUrl(basePath) {
+      const params = new URLSearchParams();
+      if (selectedDomain) {
+        params.set('domain', selectedDomain);
+      }
+      if (searchQuery.trim()) {
+        params.set('q', searchQuery.trim());
+        params.set('field', searchField);
+      }
+
+      const queryString = params.toString();
+      return queryString ? `${basePath}?${queryString}` : basePath;
+    }
+
+    function updateSearchStatus() {
+      const statusEl = document.getElementById('search-status');
+      const activeDomain = selectedDomain || 'all domains';
+
+      if (!searchQuery.trim()) {
+        statusEl.textContent = `Showing the latest ${currentTab} emails for ${activeDomain}.`;
+        return;
+      }
+
+      const fieldLabel = document.getElementById('email-search-field').selectedOptions[0]?.textContent || 'All fields';
+      statusEl.textContent = `Searching ${fieldLabel.toLowerCase()} in ${currentTab} emails for "${searchQuery.trim()}" on ${activeDomain}.`;
+    }
 
     async function fetchDomains() {
       try {
@@ -589,9 +674,8 @@
 
     async function fetchData() {
       try {
-        // Build URLs with domain filter
-        const sentUrl = selectedDomain ? `/emails?domain=${encodeURIComponent(selectedDomain)}` : '/emails';
-        const receivedUrl = selectedDomain ? `/received-emails?domain=${encodeURIComponent(selectedDomain)}` : '/received-emails';
+        const sentUrl = buildEmailListUrl('/emails');
+        const receivedUrl = buildEmailListUrl('/received-emails');
         
         const [statsRes, statsDomainRes, sentRes, receivedRes] = await Promise.all([
           fetch('/stats'),
@@ -631,6 +715,7 @@
 
     function onDomainChange() {
       selectedDomain = document.getElementById('domain-selector').value;
+      updateSearchStatus();
       refreshData();
     }
 
@@ -639,6 +724,7 @@
       document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
       document.getElementById(`tab-${tab}`).classList.add('active');
       document.getElementById('email-list-title').textContent = tab === 'sent' ? 'Sent Emails' : 'Received Emails';
+      updateSearchStatus();
       updateEmailList();
     }
 
@@ -666,11 +752,14 @@
     function updateEmailList() {
       const listEl = document.getElementById('email-list');
       const emails = currentTab === 'sent' ? sentEmails : receivedEmails;
+      const activeSearch = searchQuery.trim();
       
-      document.getElementById('email-count').textContent = `${emails.length} emails`;
+      document.getElementById('email-count').textContent = activeSearch
+        ? `${emails.length} match${emails.length === 1 ? '' : 'es'}`
+        : `${emails.length} emails`;
       
       if (!emails || emails.length === 0) {
-        listEl.innerHTML = `<div class="empty">No ${currentTab} emails found</div>`;
+        listEl.innerHTML = `<div class="empty">No ${currentTab} emails found${activeSearch ? ` for "${escapeHtml(activeSearch)}"` : ''}</div>`;
         return;
       }
 
@@ -1257,7 +1346,34 @@
 
     function refreshData() {
       document.getElementById('email-list').innerHTML = '<div class="loading">Loading...</div>';
+      updateSearchStatus();
       fetchData();
+    }
+
+    function onSearchInput(event) {
+      searchQuery = event.target.value;
+      updateSearchStatus();
+      if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+      }
+      searchDebounceTimer = setTimeout(() => {
+        refreshData();
+      }, 250);
+    }
+
+    function onSearchFieldChange(event) {
+      searchField = event.target.value;
+      updateSearchStatus();
+      refreshData();
+    }
+
+    function clearSearch() {
+      searchQuery = '';
+      searchField = 'all';
+      document.getElementById('email-search').value = '';
+      document.getElementById('email-search-field').value = 'all';
+      updateSearchStatus();
+      refreshData();
     }
 
     // Close modal on overlay click
@@ -1267,8 +1383,11 @@
 
     // Domain selector change handler
     document.getElementById('domain-selector').addEventListener('change', onDomainChange);
+    document.getElementById('email-search').addEventListener('input', onSearchInput);
+    document.getElementById('email-search-field').addEventListener('change', onSearchFieldChange);
 
     // Initial load
+    updateSearchStatus();
     fetchDomains();
     fetchData();
     // Refresh every 30 seconds

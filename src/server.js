@@ -19,6 +19,8 @@ import {
   getReceivedEmails,
   getRecentEmailsByDomain,
   getReceivedEmailsByDomain,
+  searchEmails,
+  searchReceivedEmails,
   getSentDomains,
   getReceivedDomains,
   getEmailById,
@@ -363,12 +365,18 @@ const routes = {
     try {
       const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
       const domain = req.query?.domain;
+      const search = req.query?.q;
+      const field = req.query?.field;
       
       let emails;
       if (isDatabaseAvailable()) {
-        emails = domain 
-          ? await getRecentEmailsByDomain(domain, limit)
-          : await getRecentEmails(limit);
+        if (search && search.trim()) {
+          emails = await searchEmails({ search, field, domain, limit });
+        } else {
+          emails = domain 
+            ? await getRecentEmailsByDomain(domain, limit)
+            : await getRecentEmails(limit);
+        }
       } else {
         emails = [];
       }
@@ -384,12 +392,18 @@ const routes = {
     try {
       const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
       const domain = req.query?.domain;
+      const search = req.query?.q;
+      const field = req.query?.field;
       
       let emails;
       if (isDatabaseAvailable()) {
-        emails = domain
-          ? await getReceivedEmailsByDomain(domain, limit)
-          : await getReceivedEmails(limit);
+        if (search && search.trim()) {
+          emails = await searchReceivedEmails({ search, field, domain, limit });
+        } else {
+          emails = domain
+            ? await getReceivedEmailsByDomain(domain, limit)
+            : await getReceivedEmails(limit);
+        }
       } else {
         emails = [];
       }
@@ -892,12 +906,12 @@ const routes = {
           }
         },
         list_sent: {
-          endpoint: 'GET /emails?domain=&limit=50',
-          description: 'List sent emails with optional domain filter'
+          endpoint: 'GET /emails?domain=&limit=50&q=&field=all',
+          description: 'List sent emails with optional domain filter and search'
         },
         list_received: {
-          endpoint: 'GET /received-emails?domain=&limit=50',
-          description: 'List received (inbound) emails with optional domain filter'
+          endpoint: 'GET /received-emails?domain=&limit=50&q=&field=all',
+          description: 'List received (inbound) emails with optional domain filter and search'
         },
         api_keys: {
           description: 'Manage Resend API keys per domain (stored in database)',
@@ -922,9 +936,9 @@ const routes = {
       endpoints: [
         { method: 'GET', path: '/health', description: 'Health check' },
         { method: 'GET', path: '/stats', description: 'Email statistics (sent)' },
-        { method: 'GET', path: '/emails', description: 'List sent emails' },
+        { method: 'GET', path: '/emails', description: 'List sent emails with optional domain and search filters' },
         { method: 'GET', path: '/emails/:id', description: 'View a single sent email by ID (database ID or Resend ID)' },
-        { method: 'GET', path: '/received-emails', description: 'List received (inbound) emails' },
+        { method: 'GET', path: '/received-emails', description: 'List received (inbound) emails with optional domain and search filters' },
         { method: 'GET', path: '/received-emails/:id', description: 'View a single received email by ID (database ID or email ID)' },
         { method: 'POST', path: '/send', description: 'Send email with optional attachments (10MB limit)' },
         { method: 'POST', path: '/send-batch', description: 'Send batch emails' },
