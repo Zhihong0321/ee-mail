@@ -1212,7 +1212,7 @@
 
       if (currentTab === 'sent') {
         listEl.innerHTML = emails.map(email => `
-          <div class="email-item" onclick="viewSentEmail(${email.id})">
+          <div class="email-item" onclick="viewSentEmail('${email.id}')">
             <div class="email-sender">
               ${email.from_email}
               <span class="status-badge status-${email.status}">${email.status}</span>
@@ -1229,7 +1229,7 @@
           const hasAttachments = email.attachments && email.attachments.length > 0;
           const attachmentIcon = hasAttachments ? ` 📎 ${email.attachments.length > 1 ? email.attachments.length : ''}` : '';
           return `
-            <div class="email-item" onclick="viewReceivedEmail(${email.id})">
+            <div class="email-item" onclick="viewReceivedEmail('${email.id}')">
               <div class="email-sender">
                 ${email.from_email}
               </div>
@@ -1245,7 +1245,7 @@
     }
 
     async function viewSentEmail(id) {
-      const meta = sentEmails.find(e => e.id === id) || { subject: 'Loading...', from_email: '...' };
+      const meta = sentEmails.find(e => String(e.id) === String(id)) || { subject: 'Loading...', from_email: '...' };
       
       // Render details modal with loading state immediately
       showEmailDetail(meta, 'sent', true);
@@ -1254,7 +1254,7 @@
         const res = await fetch(`/emails/${id}`);
         const result = await res.json();
         if (result.success && result.data) {
-          if (currentEmail && currentEmail.id === id) {
+          if (currentEmail && String(currentEmail.id) === String(id)) {
             showEmailDetail(result.data, 'sent', false);
           }
         } else {
@@ -1266,7 +1266,7 @@
     }
 
     async function viewReceivedEmail(id) {
-      const meta = receivedEmails.find(e => e.id === id) || { subject: 'Loading...', from_email: '...' };
+      const meta = receivedEmails.find(e => String(e.id) === String(id)) || { subject: 'Loading...', from_email: '...' };
       
       showEmailDetail(meta, 'received', true);
       
@@ -1274,7 +1274,7 @@
         const res = await fetch(`/received-emails/${id}`);
         const result = await res.json();
         if (result.success && result.data) {
-          if (currentEmail && currentEmail.id === id) {
+          if (currentEmail && String(currentEmail.id) === String(id)) {
             showEmailDetail(result.data, 'received', false);
           }
         } else {
@@ -1784,9 +1784,12 @@
 
     function switchDetailTab(type) {
       document.querySelectorAll('#detail-tab-html, #detail-tab-text').forEach(t => t.classList.remove('active'));
-      document.getElementById(`detail-tab-${type}`).classList.add('active');
-      document.getElementById('content-html').style.display = type === 'html' ? 'block' : 'none';
-      document.getElementById('content-text').style.display = type === 'text' ? 'block' : 'none';
+      const tabEl = document.getElementById(`detail-tab-${type}`);
+      if (tabEl) tabEl.classList.add('active');
+      const htmlEl = document.getElementById('content-html');
+      const textEl = document.getElementById('content-text');
+      if (htmlEl) htmlEl.style.display = type === 'html' ? 'block' : 'none';
+      if (textEl) textEl.style.display = type === 'text' ? 'block' : 'none';
     }
 
     function formatDate(dateStr) {
