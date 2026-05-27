@@ -385,7 +385,7 @@ export async function getRecentEmails(limit = 50) {
   if (!pool) return [];
 
   const result = await pool.query(
-    `SELECT * FROM emails ORDER BY sent_at DESC LIMIT $1`,
+    `SELECT id, resend_id, domain, from_email, to_email, subject, status, sent_at, delivered_at, opened_at, clicked_at, error_message FROM emails ORDER BY sent_at DESC LIMIT $1`,
     [limit]
   );
 
@@ -501,7 +501,7 @@ export async function getReceivedEmails(limit = 50) {
   if (!pool) return [];
 
   const result = await pool.query(
-    `SELECT * FROM received_emails ORDER BY received_at DESC LIMIT $1`,
+    `SELECT id, email_id, message_id, domain, from_email, to_email, subject, attachments, received_at FROM received_emails ORDER BY received_at DESC LIMIT $1`,
     [limit]
   );
 
@@ -629,7 +629,7 @@ export async function getRecentEmailsByDomain(domain, limit = 50) {
   if (!pool) return [];
 
   const result = await pool.query(
-    `SELECT * FROM emails WHERE domain = $1 ORDER BY sent_at DESC LIMIT $2`,
+    `SELECT id, resend_id, domain, from_email, to_email, subject, status, sent_at, delivered_at, opened_at, clicked_at, error_message FROM emails WHERE domain = $1 ORDER BY sent_at DESC LIMIT $2`,
     [domain, limit]
   );
 
@@ -643,7 +643,7 @@ export async function getReceivedEmailsByDomain(domain, limit = 50) {
   if (!pool) return [];
 
   const result = await pool.query(
-    `SELECT * FROM received_emails WHERE domain = $1 ORDER BY received_at DESC LIMIT $2`,
+    `SELECT id, email_id, message_id, domain, from_email, to_email, subject, attachments, received_at FROM received_emails WHERE domain = $1 ORDER BY received_at DESC LIMIT $2`,
     [domain, limit]
   );
 
@@ -675,7 +675,7 @@ export async function searchEmails({ search, field = 'all', domain = null, limit
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   const result = await pool.query(
-    `SELECT * FROM emails ${whereClause} ORDER BY sent_at DESC LIMIT $${values.length}`,
+    `SELECT id, resend_id, domain, from_email, to_email, subject, status, sent_at, delivered_at, opened_at, clicked_at, error_message FROM emails ${whereClause} ORDER BY sent_at DESC LIMIT $${values.length}`,
     values
   );
 
@@ -707,7 +707,7 @@ export async function searchReceivedEmails({ search, field = 'all', domain = nul
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   const result = await pool.query(
-    `SELECT * FROM received_emails ${whereClause} ORDER BY received_at DESC LIMIT $${values.length}`,
+    `SELECT id, email_id, message_id, domain, from_email, to_email, subject, attachments, received_at FROM received_emails ${whereClause} ORDER BY received_at DESC LIMIT $${values.length}`,
     values
   );
 
