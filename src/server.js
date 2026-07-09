@@ -1,7 +1,6 @@
 // HTTP Server for Railway
 
 import http from 'http';
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { URL } from 'url';
@@ -105,37 +104,6 @@ function setCors(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
-// Guard agent-facing endpoints with the AGENT_API_KEY shared secret.
-// Returns true if the request is authorized; otherwise writes the 401/503
-// response and returns false. Use as: `if (!requireAgentApiKey(req, res)) return;`
-function requireAgentApiKey(req, res) {
-  if (!config.AGENT_API_KEY) {
-    json(res, 503, {
-      error: 'agent api key not configured (set AGENT_API_KEY env var)',
-    });
-    return false;
-  }
-
-  const header = req.headers.authorization || '';
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match) {
-    json(res, 401, { error: 'Unauthorized' });
-    return false;
-  }
-
-  const provided = match[1];
-  const expected = config.AGENT_API_KEY;
-
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-    json(res, 401, { error: 'Unauthorized' });
-    return false;
-  }
-
-  return true;
-}
-
 // Route handlers
 const routes = {
   // Health check
@@ -151,7 +119,6 @@ const routes = {
   // Send email
   'POST /send': async (req, res) => {
     try {
-      if (!requireAgentApiKey(req, res)) return;
       const body = await parseBody(req);
       
       // Validate required fields
@@ -234,7 +201,6 @@ const routes = {
   // Send batch emails
   'POST /send-batch': async (req, res) => {
     try {
-      if (!requireAgentApiKey(req, res)) return;
       const body = await parseBody(req);
       
       if (!Array.isArray(body.emails)) {
@@ -397,7 +363,6 @@ const routes = {
   // Get sent emails
   'GET /emails': async (req, res) => {
     try {
-      if (!requireAgentApiKey(req, res)) return;
       const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
       const domain = req.query?.domain;
       const search = req.query?.q;
@@ -425,7 +390,6 @@ const routes = {
   // Get received (inbound) emails
   'GET /received-emails': async (req, res) => {
     try {
-      if (!requireAgentApiKey(req, res)) return;
       const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
       const domain = req.query?.domain;
       const search = req.query?.q;
@@ -453,7 +417,6 @@ const routes = {
   // View a single sent email by database ID or Resend ID
   'GET /emails/:id': async (req, res) => {
     try {
-      if (!requireAgentApiKey(req, res)) return;
       if (!isDatabaseAvailable()) {
         return json(res, 503, { success: false, error: 'Database not available' });
       }
@@ -481,7 +444,6 @@ const routes = {
   // View a single received email by database ID or email ID
   'GET /received-emails/:id': async (req, res) => {
     try {
-      if (!requireAgentApiKey(req, res)) return;
       if (!isDatabaseAvailable()) {
         return json(res, 503, { success: false, error: 'Database not available' });
       }
