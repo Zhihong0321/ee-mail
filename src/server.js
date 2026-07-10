@@ -74,21 +74,6 @@ function json(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-function requireTaskApiKey(req, res) {
-  if (!config.AGENT_API_KEY) {
-    json(res, 503, { success: false, error: 'AGENT_API_KEY is not configured' });
-    return false;
-  }
-
-  const authorization = req.headers.authorization || '';
-  if (authorization !== `Bearer ${config.AGENT_API_KEY}`) {
-    json(res, 401, { success: false, error: 'Invalid API key' });
-    return false;
-  }
-
-  return true;
-}
-
 // Static file serving
 const MIME_TYPES = {
   '.html': 'text/html',
@@ -665,8 +650,6 @@ const routes = {
   },
 
   'POST /seda-tasks/from-received-email/:id': async (req, res) => {
-    if (!requireTaskApiKey(req, res)) return;
-
     try {
       const result = await enqueueSedaTaskForReceivedEmailId(req.params.id);
       if (!result.matched) {
@@ -687,8 +670,6 @@ const routes = {
   },
 
   'POST /seda-tasks/:id/retry': async (req, res) => {
-    if (!requireTaskApiKey(req, res)) return;
-
     try {
       const task = await retrySedaTaskById(parseInt(req.params.id));
       json(res, 200, { success: true, data: task });

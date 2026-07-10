@@ -29,7 +29,6 @@ Email service using Resend API with the `@eternalgy.me` domain. Deployed on Rail
 | `DEFAULT_FROM` | No | Default sender email |
 | `PORT` | No | Server port (default: 3000) |
 | `WEBHOOK_SECRET` | No | Secret for webhook verification |
-| `AGENT_API_KEY` | Optional | Protects manual SEDA task actions such as backfill/retry; read-only task dashboard endpoints remain public like the email inbox. |
 | `SEDA_API_KEY` | Required for worker | Production SEDA status API key; store as a Railway secret |
 | `SEDA_STATUS_API_URL` | No | SEDA status endpoint (defaults to the production endpoint) |
 | `SEDA_STATUS_DRY_RUN` | No | Defaults to `false`; use `true` only for safe matching tests |
@@ -37,19 +36,19 @@ Email service using Resend API with the `@eternalgy.me` domain. Deployed on Rail
 
 ## API Endpoints
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/health` | public | Health check |
-| GET | `/` | public | API info |
-| POST | `/send` | agent | Send single email |
-| POST | `/send-batch` | agent | Send batch emails |
-| GET | `/emails` | agent | List sent emails |
-| GET | `/emails/:id` | agent | View one sent email |
-| GET | `/received-emails` | agent | List received (inbound) emails |
-| GET | `/received-emails/:id` | agent | View one received email |
-| POST | `/webhook` | public | Receive email webhooks |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/` | API info |
+| POST | `/send` | Send single email |
+| POST | `/send-batch` | Send batch emails |
+| GET | `/emails` | List sent emails |
+| GET | `/emails/:id` | View one sent email |
+| GET | `/received-emails` | List received (inbound) emails |
+| GET | `/received-emails/:id` | View one received email |
+| POST | `/webhook` | Receive email webhooks |
 
-**Auth:** `agent` endpoints require `Authorization: Bearer <AGENT_API_KEY>`. Without the header → `401`. Without the env var set → `503`.
+All endpoints are public — there is no API key auth on this service.
 
 ### SEDA ATAP approval workflow
 
@@ -61,15 +60,12 @@ Every received email is checked in this order:
 
 A matching email creates a durable PostgreSQL task with status `PENDING` before any SEDA API request. The worker later calls the SEDA status API and changes the task to `COMPLETED` only when the response contains `success: true` and `updated: true`. Failed, ambiguous, or no-match requests remain durable and retryable/manual-reviewable.
 
-Read-only task endpoints are available to the dashboard:
+Task endpoints (all public):
 
 - `GET /seda-tasks`
 - `GET /seda-tasks/stats`
 - `GET /seda-tasks/:id`
 - `POST /seda-tasks/scan` — body `{ days?: 7, domain?: null, limit?: 500 }`. Scans received emails since `days` ago and creates PENDING tasks for any that match the SEDA ATAP rules (idempotent, safe to re-run over overlapping windows). Also available as a "Scan emails since N days ago" control on the SEDA Tasks dashboard tab.
-
-Manual task actions require `Authorization: Bearer <AGENT_API_KEY>`:
-
 - `POST /seda-tasks/from-received-email/:id`
 - `POST /seda-tasks/:id/retry`
 
@@ -115,7 +111,6 @@ railway up
 
 ```bash
 curl -X POST http://localhost:3000/send \
-  -H "Authorization: Bearer $AGENT_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "to": "user@example.com",

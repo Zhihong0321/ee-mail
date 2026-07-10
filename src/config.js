@@ -87,9 +87,6 @@ const config = {
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   ENV_API_KEYS,  // Map of domain -> API key from env: { 'domain1.com': 'key1', ... }
 
-  // Agent API key - protects /send, /send-batch, /emails, /received-emails
-  AGENT_API_KEY: process.env.AGENT_API_KEY,
-
   // Email Domains (multiple supported)
   EMAIL_DOMAINS,  // Array of domains: ['domain1.com', 'domain2.com']
   EMAIL_DOMAIN: EMAIL_DOMAINS[0],  // Primary domain (backward compatibility)
@@ -123,10 +120,6 @@ export function validateConfig() {
   
   if (!hasDefaultKey && !hasDomainKeys) {
     console.warn('⚠️ No RESEND_API_KEY configured. Add API keys via admin UI or set RESEND_API_KEY env var.');
-  }
-
-  if (!config.AGENT_API_KEY) {
-    console.warn('⚠️ No AGENT_API_KEY configured. Agent-facing endpoints and SEDA task endpoints will reject protected requests with 503.');
   }
 
   if (!config.SEDA_API_KEY) {
