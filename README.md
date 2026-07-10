@@ -29,7 +29,7 @@ Email service using Resend API with the `@eternalgy.me` domain. Deployed on Rail
 | `DEFAULT_FROM` | No | Default sender email |
 | `PORT` | No | Server port (default: 3000) |
 | `WEBHOOK_SECRET` | No | Secret for webhook verification |
-| `AGENT_API_KEY` | Recommended | Shared secret required on agent-facing endpoints (`/send`, `/send-batch`, `/emails`, `/received-emails`) and SEDA task endpoints. If unset, those endpoints return 503. |
+| `AGENT_API_KEY` | Optional | Protects manual SEDA task actions such as backfill/retry; read-only task dashboard endpoints remain public like the email inbox. |
 | `SEDA_API_KEY` | Required for worker | Production SEDA status API key; store as a Railway secret |
 | `SEDA_STATUS_API_URL` | No | SEDA status endpoint (defaults to the production endpoint) |
 | `SEDA_STATUS_DRY_RUN` | No | Defaults to `false`; use `true` only for safe matching tests |
@@ -61,11 +61,14 @@ Every received email is checked in this order:
 
 A matching email creates a durable PostgreSQL task with status `PENDING` before any SEDA API request. The worker later calls the SEDA status API and changes the task to `COMPLETED` only when the response contains `success: true` and `updated: true`. Failed, ambiguous, or no-match requests remain durable and retryable/manual-reviewable.
 
-SEDA task endpoints are protected with `Authorization: Bearer <AGENT_API_KEY>`:
+Read-only task endpoints are available to the dashboard:
 
 - `GET /seda-tasks`
 - `GET /seda-tasks/stats`
 - `GET /seda-tasks/:id`
+
+Manual task actions require `Authorization: Bearer <AGENT_API_KEY>`:
+
 - `POST /seda-tasks/from-received-email/:id`
 - `POST /seda-tasks/:id/retry`
 

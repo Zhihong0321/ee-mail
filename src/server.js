@@ -617,10 +617,8 @@ const routes = {
     }
   },
 
-  // SEDA ATAP approval tasks
+  // SEDA ATAP approval tasks (read-only dashboard endpoints are public like the email inbox)
   'GET /seda-tasks': async (req, res) => {
-    if (!requireTaskApiKey(req, res)) return;
-
     try {
       const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
       const status = req.query?.status || null;
@@ -644,8 +642,6 @@ const routes = {
   },
 
   'GET /seda-tasks/stats': async (req, res) => {
-    if (!requireTaskApiKey(req, res)) return;
-
     try {
       const stats = await getSedaTaskStats();
       json(res, 200, { success: true, data: stats });
@@ -655,8 +651,6 @@ const routes = {
   },
 
   'GET /seda-tasks/:id': async (req, res) => {
-    if (!requireTaskApiKey(req, res)) return;
-
     try {
       const task = await getSedaTaskById(parseInt(req.params.id));
       if (!task) {
@@ -704,8 +698,6 @@ const routes = {
 
   // Re-fetch email content from Resend API
   'POST /received-emails/fetch': async (req, res) => {
-    if (!requireTaskApiKey(req, res)) return;
-
     try {
       if (!isDatabaseAvailable()) {
         return json(res, 503, { success: false, error: 'Database not available' });

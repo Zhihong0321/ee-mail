@@ -435,6 +435,54 @@
       border-bottom: none;
     }
 
+    .task-item {
+      padding: 1.1rem 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      gap: 1.5rem;
+      align-items: flex-start;
+    }
+
+    .task-item:last-child {
+      border-bottom: none;
+    }
+
+    .task-main {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .task-title {
+      color: var(--text-main);
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+      overflow-wrap: anywhere;
+    }
+
+    .task-detail {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-top: 0.2rem;
+      white-space: pre-line;
+      overflow-wrap: anywhere;
+    }
+
+    .task-meta {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      margin-top: 0.6rem;
+    }
+
+    .task-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
     .email-sender {
       font-weight: 500;
       color: white;
@@ -472,6 +520,9 @@
     .status-sent { background: rgba(99, 102, 241, 0.15); color: var(--primary); }
     .status-delivered { background: var(--success-bg); color: var(--success); }
     .status-bounced { background: var(--danger-bg); color: var(--danger); }
+    .status-pending { background: var(--warning-bg); color: var(--warning); }
+    .status-processing { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+    .status-completed { background: var(--success-bg); color: var(--success); }
     .status-opened { background: rgba(139, 92, 246, 0.15); color: var(--accent); }
     .status-clicked { background: var(--warning-bg); color: var(--warning); }
 
@@ -848,6 +899,7 @@
         <div class="tabs-header">
           <button class="tab-btn active" id="tab-sent" onclick="switchEmailTab('sent')">📤 Sent Outbox</button>
           <button class="tab-btn" id="tab-received" onclick="switchEmailTab('received')">📥 Received Inbox</button>
+          <button class="tab-btn" id="tab-seda" onclick="switchEmailTab('seda')">🧾 SEDA Tasks</button>
         </div>
 
         <div class="list-toolbar">
@@ -1002,6 +1054,8 @@
     let currentTab = 'sent';
     let receivedEmails = [];
     let sentEmails = [];
+    let sedaTasks = [];
+    let sedaTaskStats = { total: 0, pending: 0, processing: 0, completed: 0, manual_review: 0 };
     let availableDomains = [];
     let selectedDomain = ''; // Empty string means all domains
     let domainSenders = {}; // Map of domain -> default sender
@@ -1029,6 +1083,11 @@
     function updateSearchStatus() {
       const statusEl = document.getElementById('search-status');
       const activeDomain = selectedDomain || 'all domains';
+
+      if (currentTab === 'seda') {
+        statusEl.textContent = `Pending: ${sedaTaskStats.pending || 0} · Processing: ${sedaTaskStats.processing || 0} · Completed: ${sedaTaskStats.completed || 0} · Manual review: ${sedaTaskStats.manual_review || 0}`;
+        return;
+      }
 
       if (!searchQuery.trim()) {
         statusEl.textContent = `Showing the latest ${currentTab} emails for ${activeDomain}.`;
@@ -1126,17 +1185,26 @@
       
       const listPromises = Promise.all([
         fetch(sentUrl).then(r => r.json()),
-        fetch(receivedUrl).then(r => r.json())
-      ]).then(([sent, received]) => {
+        fetch(receivedUrl).then(r => r.json()),
+        fetch('/seda-tasks?limit=100').then(r => r.json()),
+        fetch('/seda-tasks/stats').then(r => r.json())
+      ]).then(([sent, received, tasks, taskStats]) => {
         if (sent.success) {
           sentEmails = sent.data;
         }
         if (received.success) {
           receivedEmails = received.data;
         }
+        if (tasks.success) {
+          sedaTasks = tasks.data || [];
+        }
+        if (taskStats.success) {
+          sedaTaskStats = taskStats.data || sedaTaskStats;
+        }
+        updateSearchStatus();
         updateEmailList();
       }).catch(err => {
-        showError('Failed to load email lists: ' + err.message);
+        showError('Failed to load email/task lists: ' + err.message);
       });
 
       // 2. Fetch stats in the background
@@ -1185,26 +1253,34 @@
 
     function switchEmailTab(tab) {
       currentTab = tab;
-      document.querySelectorAll('.tab-btn').forEach(t => {
-        if (t.id === 'tab-sent' || t.id === 'tab-received') {
-          t.classList.remove('active');
-        }
-      });
+      document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
       document.getElementById(`tab-${tab}`).classList.add('active');
-      document.getElementById('email-list-title').textContent = tab === 'sent' ? 'Sent Outbox' : 'Received Inbox';
+
+      const isSeda = tab === 'seda';
+      document.getElementById('email-list-title').textContent =
+        isSeda ? 'SEDA Approval Tasks' : (tab === 'sent' ? 'Sent Emails' : 'Received Inbox');
+      document.getElementById('email-search').disabled = isSeda;
+      document.getElementById('email-search-field').disabled = isSeda;
+      document.querySelector('.list-toolbar .btn').disabled = isSeda;
+
       updateSearchStatus();
       updateEmailList();
     }
 
     function updateEmailList() {
+      if (currentTab === 'seda') {
+        renderSedaTasks();
+        return;
+      }
+
       const listEl = document.getElementById('email-list-container');
       const emails = currentTab === 'sent' ? sentEmails : receivedEmails;
       const activeSearch = searchQuery.trim();
-      
+
       document.getElementById('email-count').textContent = activeSearch
         ? `${emails.length} match${emails.length === 1 ? '' : 'es'}`
         : `${emails.length} emails`;
-      
+
       if (!emails || emails.length === 0) {
         listEl.innerHTML = `<div class="empty-list">No ${currentTab} emails found${activeSearch ? ` for "${escapeHtml(activeSearch)}"` : ''}</div>`;
         return;
@@ -1214,12 +1290,12 @@
         listEl.innerHTML = emails.map(email => `
           <div class="email-item" onclick="viewSentEmail('${email.id}')">
             <div class="email-sender">
-              ${email.from_email}
-              <span class="status-badge status-${email.status}">${email.status}</span>
+              ${escapeHtml(email.from_email || '')}
+              <span class="status-badge status-${escapeHtml(email.status || '')}">${escapeHtml(email.status || '')}</span>
             </div>
             <div class="email-subject">
-              ${email.subject}
-              ${selectedDomain === '' && email.domain ? `<span class="domain-tag">${email.domain}</span>` : ''}
+              ${escapeHtml(email.subject || '')}
+              ${selectedDomain === '' && email.domain ? `<span class="domain-tag">${escapeHtml(email.domain)}</span>` : ''}
             </div>
             <div class="email-date">${formatDate(email.sent_at)}</div>
           </div>
@@ -1231,17 +1307,58 @@
           return `
             <div class="email-item" onclick="viewReceivedEmail('${email.id}')">
               <div class="email-sender">
-                ${email.from_email}
+                ${escapeHtml(email.from_email || '')}
               </div>
               <div class="email-subject">
-                <strong>${email.subject}</strong>${attachmentIcon}
-                ${selectedDomain === '' && email.domain ? `<span class="domain-tag">${email.domain}</span>` : ''}
+                <strong>${escapeHtml(email.subject || '')}</strong>${attachmentIcon}
+                ${selectedDomain === '' && email.domain ? `<span class="domain-tag">${escapeHtml(email.domain)}</span>` : ''}
               </div>
               <div class="email-date">${formatDate(email.received_at)}</div>
             </div>
           `;
         }).join('');
       }
+    }
+
+    function renderSedaTasks() {
+      const listEl = document.getElementById('email-list-container');
+      const tasks = sedaTasks || [];
+      const pendingCount = tasks.filter(task => task.status === 'PENDING').length;
+
+      document.getElementById('email-count').textContent =
+        `${tasks.length} task${tasks.length === 1 ? '' : 's'} · ${pendingCount} pending`;
+
+      if (tasks.length === 0) {
+        listEl.innerHTML = '<div class="empty-list">No SEDA approval tasks found.</div>';
+        return;
+      }
+
+      listEl.innerHTML = tasks.map(task => {
+        const status = String(task.status || 'PENDING').toLowerCase();
+        const review = task.requires_manual_review ? ' · Manual review' : '';
+        const error = task.last_error
+          ? `<div class="task-detail">⚠️ ${escapeHtml(task.last_error)}</div>`
+          : '';
+
+        return `
+          <div class="task-item">
+            <div class="task-main">
+              <div class="task-summary">
+                <span class="task-title">Task #${escapeHtml(String(task.id))}</span>
+                <span class="status-badge status-${escapeHtml(status)}">${escapeHtml(task.status || 'PENDING')}</span>
+                <span>${escapeHtml(task.application_number || 'ATAP approval')}</span>
+              </div>
+              <div class="task-detail"><strong>${escapeHtml(task.customer_name || 'Customer name not extracted')}</strong></div>
+              <div class="task-detail">${escapeHtml(task.installation_address || 'Installation address not extracted')}</div>
+              <div class="task-meta">
+                Source email: ${escapeHtml(task.source_email_id || '-')} · Attempts: ${escapeHtml(String(task.attempt_count || 0))}${escapeHtml(review)}
+                ${error}
+              </div>
+            </div>
+            <div class="email-date">${formatDate(task.updated_at || task.created_at)}</div>
+          </div>
+        `;
+      }).join('');
     }
 
     async function viewSentEmail(id) {
