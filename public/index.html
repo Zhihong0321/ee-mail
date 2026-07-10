@@ -1953,19 +1953,8 @@
       document.getElementById('error-container').innerHTML = `<div class="success-alert">${escapeHtml(msg)}</div>`;
     }
 
-    function getAgentApiKey(forcePrompt = false) {
-      let key = localStorage.getItem('agentApiKey');
-      if (forcePrompt || !key) {
-        key = prompt('Enter AGENT_API_KEY to authorize this action:', key || '');
-        if (key) localStorage.setItem('agentApiKey', key);
-      }
-      return key;
-    }
-
     async function scanSedaTasks() {
       const days = parseInt(document.getElementById('seda-scan-days').value) || 7;
-      const apiKey = getAgentApiKey();
-      if (!apiKey) return;
 
       const btn = document.getElementById('seda-scan-btn');
       btn.disabled = true;
@@ -1974,19 +1963,10 @@
       try {
         const res = await fetch('/seda-tasks/scan', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ days }),
         });
         const result = await res.json();
-
-        if (res.status === 401) {
-          localStorage.removeItem('agentApiKey');
-          showError('Invalid API key. Please try again.');
-          return;
-        }
 
         if (!result.success) {
           showError('Scan failed: ' + (result.error || 'Unknown error'));

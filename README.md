@@ -66,12 +66,12 @@ Read-only task endpoints are available to the dashboard:
 - `GET /seda-tasks`
 - `GET /seda-tasks/stats`
 - `GET /seda-tasks/:id`
+- `POST /seda-tasks/scan` — body `{ days?: 7, domain?: null, limit?: 500 }`. Scans received emails since `days` ago and creates PENDING tasks for any that match the SEDA ATAP rules (idempotent, safe to re-run over overlapping windows). Also available as a "Scan emails since N days ago" control on the SEDA Tasks dashboard tab.
 
 Manual task actions require `Authorization: Bearer <AGENT_API_KEY>`:
 
 - `POST /seda-tasks/from-received-email/:id`
 - `POST /seda-tasks/:id/retry`
-- `POST /seda-tasks/scan` — body `{ days?: 7, domain?: null, limit?: 500 }`. Scans received emails since `days` ago and creates PENDING tasks for any that match the SEDA ATAP rules (idempotent, safe to re-run over overlapping windows).
 
 ## Local Development
 

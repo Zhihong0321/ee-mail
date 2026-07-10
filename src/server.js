@@ -699,8 +699,6 @@ const routes = {
 
   // Manually scan received emails since N days ago and create PENDING SEDA tasks for any matches
   'POST /seda-tasks/scan': async (req, res) => {
-    if (!requireTaskApiKey(req, res)) return;
-
     try {
       const body = await parseBody(req);
       const sinceDays = body.days !== undefined ? Number(body.days) : 7;
@@ -1076,7 +1074,7 @@ const routes = {
         { method: 'GET', path: '/seda-tasks/:id', description: 'Get one protected SEDA task' },
         { method: 'POST', path: '/seda-tasks/from-received-email/:id', description: 'Create a protected PENDING task from an existing received email' },
         { method: 'POST', path: '/seda-tasks/:id/retry', description: 'Make a protected SEDA task retryable' },
-        { method: 'POST', path: '/seda-tasks/scan', description: 'Manually scan received emails since N days ago and create PENDING tasks for any matches (body: { days, domain, limit })' },
+        { method: 'POST', path: '/seda-tasks/scan', description: 'Scan received emails since N days ago and create PENDING tasks for any matches (public, body: { days, domain, limit })' },
         { method: 'GET', path: '/health', description: 'Health check' },
         { method: 'GET', path: '/stats', description: 'Email statistics (sent)' },
         { method: 'GET', path: '/emails', description: 'List sent emails with optional domain and search filters' },
