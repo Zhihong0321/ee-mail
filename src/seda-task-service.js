@@ -3,6 +3,7 @@ import {
   isDatabaseAvailable,
   getReceivedEmailById,
   getReceivedEmailByEmailId,
+  getReceivedEmailsSince,
   createSedaPendingTask,
   getSedaTaskById,
   getSedaTasks,
@@ -119,6 +120,47 @@ export async function enqueueSedaTaskForReceivedEmailId(reference) {
   }
 
   return enqueueSedaTaskForReceivedEmail(email);
+}
+
+export async function scanReceivedEmailsForSedaTasks({ sinceDays = 7, domain = null, limit = 500 } = {}) {
+  if (!isDatabaseAvailable()) {
+    throw new Error('Database not available');
+  }
+
+  const days = Number(sinceDays);
+  if (!Number.isFinite(days) || days <= 0) {
+    const error = new Error('sinceDays must be a positive number');
+    error.status = 400;
+    throw error;
+  }
+
+  const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const emails = await getReceivedEmailsSince({ sinceDate, domain, limit });
+
+  const matches = [];
+  let matched = 0;
+  let created = 0;
+
+  for (const email of emails) {
+    const result = await enqueueSedaTaskForReceivedEmail(email);
+    if (result.matched) {
+      matched += 1;
+      if (result.created) created += 1;
+      matches.push({
+        sourceEmailId: email.email_id,
+        created: result.created,
+        task: result.task,
+      });
+    }
+  }
+
+  return {
+    sinceDate: sinceDate.toISOString(),
+    scanned: emails.length,
+    matched,
+    created,
+    tasks: matches,
+  };
 }
 
 async function requestSedaStatus(payload) {

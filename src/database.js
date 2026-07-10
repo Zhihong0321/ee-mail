@@ -750,6 +750,30 @@ export async function searchReceivedEmails({ search, field = 'all', domain = nul
 }
 
 /**
+ * Get received emails (full rows, incl. content) received on or after a given date
+ */
+export async function getReceivedEmailsSince({ sinceDate, domain = null, limit = 500 } = {}) {
+  if (!pool) return [];
+
+  const values = [sinceDate];
+  const conditions = ['received_at >= $1'];
+
+  if (domain) {
+    values.push(domain);
+    conditions.push(`domain = $${values.length}`);
+  }
+
+  values.push(limit);
+
+  const result = await pool.query(
+    `SELECT * FROM received_emails WHERE ${conditions.join(' AND ')} ORDER BY received_at ASC LIMIT $${values.length}`,
+    values
+  );
+
+  return result.rows;
+}
+
+/**
  * Get all unique domains from sent emails
  */
 export async function getSentDomains() {

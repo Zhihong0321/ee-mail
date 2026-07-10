@@ -807,6 +807,29 @@
       margin-bottom: 1.5rem;
     }
 
+    .success-alert {
+      background: var(--success-bg);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.1);
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+    }
+
+    .seda-toolbar {
+      display: none;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .seda-toolbar.active {
+      display: flex;
+    }
+
+    .seda-toolbar input {
+      width: 80px;
+    }
+
     .loading-list, .empty-list {
       text-align: center;
       padding: 4rem;
@@ -918,6 +941,12 @@
           </select>
           <button class="btn btn-secondary" type="button" onclick="clearSearch()">Clear</button>
           <div class="search-status" id="search-status">Showing the latest emails.</div>
+          <div class="seda-toolbar" id="seda-toolbar">
+            <label for="seda-scan-days">Scan emails since</label>
+            <input type="number" id="seda-scan-days" value="7" min="1" max="365">
+            <span>days ago</span>
+            <button class="btn btn-primary" type="button" id="seda-scan-btn" onclick="scanSedaTasks()">🔍 Scan for tasks</button>
+          </div>
         </div>
 
         <div class="list-header">
@@ -1262,6 +1291,7 @@
       document.getElementById('email-search').disabled = isSeda;
       document.getElementById('email-search-field').disabled = isSeda;
       document.querySelector('.list-toolbar .btn').disabled = isSeda;
+      document.getElementById('seda-toolbar').classList.toggle('active', isSeda);
 
       updateSearchStatus();
       updateEmailList();
@@ -1917,6 +1947,61 @@
 
     function showError(msg) {
       document.getElementById('error-container').innerHTML = `<div class="error-alert">${escapeHtml(msg)}</div>`;
+    }
+
+    function showSuccess(msg) {
+      document.getElementById('error-container').innerHTML = `<div class="success-alert">${escapeHtml(msg)}</div>`;
+    }
+
+    function getAgentApiKey(forcePrompt = false) {
+      let key = localStorage.getItem('agentApiKey');
+      if (forcePrompt || !key) {
+        key = prompt('Enter AGENT_API_KEY to authorize this action:', key || '');
+        if (key) localStorage.setItem('agentApiKey', key);
+      }
+      return key;
+    }
+
+    async function scanSedaTasks() {
+      const days = parseInt(document.getElementById('seda-scan-days').value) || 7;
+      const apiKey = getAgentApiKey();
+      if (!apiKey) return;
+
+      const btn = document.getElementById('seda-scan-btn');
+      btn.disabled = true;
+      btn.textContent = '🔍 Scanning...';
+
+      try {
+        const res = await fetch('/seda-tasks/scan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({ days }),
+        });
+        const result = await res.json();
+
+        if (res.status === 401) {
+          localStorage.removeItem('agentApiKey');
+          showError('Invalid API key. Please try again.');
+          return;
+        }
+
+        if (!result.success) {
+          showError('Scan failed: ' + (result.error || 'Unknown error'));
+          return;
+        }
+
+        const { scanned, matched, created } = result.data;
+        showSuccess(`Scanned ${scanned} email(s) from the last ${days} day(s): ${matched} matched, ${created} new task(s) created.`);
+        await fetchData();
+      } catch (err) {
+        showError('Network error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 Scan for tasks';
+      }
     }
 
     function refreshData() {
