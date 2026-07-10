@@ -3,6 +3,7 @@
 import { createServer } from './server.js';
 import config from './config.js';
 import { initDatabase, initTables } from './database.js';
+import { startSedaTaskWorker } from './seda-task-service.js';
 
 // Initialize database
 const pool = initDatabase(config.DATABASE_URL);
@@ -11,6 +12,7 @@ if (pool) {
 }
 
 const server = createServer();
+const stopSedaWorker = startSedaTaskWorker();
 
 server.listen(config.PORT, () => {
   console.log(`🚀 EE-Mail Service running on port ${config.PORT}`);
@@ -24,6 +26,7 @@ server.listen(config.PORT, () => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
+  stopSedaWorker();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
@@ -32,6 +35,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
+  stopSedaWorker();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);

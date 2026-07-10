@@ -29,16 +29,45 @@ Email service using Resend API with the `@eternalgy.me` domain. Deployed on Rail
 | `DEFAULT_FROM` | No | Default sender email |
 | `PORT` | No | Server port (default: 3000) |
 | `WEBHOOK_SECRET` | No | Secret for webhook verification |
+| `AGENT_API_KEY` | Recommended | Shared secret required on agent-facing endpoints (`/send`, `/send-batch`, `/emails`, `/received-emails`) and SEDA task endpoints. If unset, those endpoints return 503. |
+| `SEDA_API_KEY` | Required for worker | Production SEDA status API key; store as a Railway secret |
+| `SEDA_STATUS_API_URL` | No | SEDA status endpoint (defaults to the production endpoint) |
+| `SEDA_STATUS_DRY_RUN` | No | Defaults to `false`; use `true` only for safe matching tests |
+| `SEDA_TASK_WORKER_INTERVAL_MS` | No | Worker polling interval (default: 5000 ms) |
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check |
-| GET | `/` | API info |
-| POST | `/send` | Send single email |
-| POST | `/send-batch` | Send batch emails |
-| POST | `/webhook` | Receive email webhooks |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/health` | public | Health check |
+| GET | `/` | public | API info |
+| POST | `/send` | agent | Send single email |
+| POST | `/send-batch` | agent | Send batch emails |
+| GET | `/emails` | agent | List sent emails |
+| GET | `/emails/:id` | agent | View one sent email |
+| GET | `/received-emails` | agent | List received (inbound) emails |
+| GET | `/received-emails/:id` | agent | View one received email |
+| POST | `/webhook` | public | Receive email webhooks |
+
+**Auth:** `agent` endpoints require `Authorization: Bearer <AGENT_API_KEY>`. Without the header → `401`. Without the env var set → `503`.
+
+### SEDA ATAP approval workflow
+
+Every received email is checked in this order:
+
+1. Sender: `admin@eternalgy.my` or a direct/forwarded `@seda.gov.my` sender.
+2. Subject: ATAP/eATAP/ATP approval wording.
+3. Headers/body: contains `seda.gov.my`.
+
+A matching email creates a durable PostgreSQL task with status `PENDING` before any SEDA API request. The worker later calls the SEDA status API and changes the task to `COMPLETED` only when the response contains `success: true` and `updated: true`. Failed, ambiguous, or no-match requests remain durable and retryable/manual-reviewable.
+
+SEDA task endpoints are protected with `Authorization: Bearer <AGENT_API_KEY>`:
+
+- `GET /seda-tasks`
+- `GET /seda-tasks/stats`
+- `GET /seda-tasks/:id`
+- `POST /seda-tasks/from-received-email/:id`
+- `POST /seda-tasks/:id/retry`
 
 ## Local Development
 
@@ -82,6 +111,7 @@ railway up
 
 ```bash
 curl -X POST http://localhost:3000/send \
+  -H "Authorization: Bearer $AGENT_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "to": "user@example.com",

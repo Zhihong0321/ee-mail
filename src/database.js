@@ -203,6 +203,41 @@ export async function initTables() {
         ON agent_email_accounts(full_email);
     `);
 
+
+    // Durable SEDA ATAP approval task queue
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS seda_tasks (
+        id BIGSERIAL PRIMARY KEY,
+        task_type VARCHAR(100) NOT NULL DEFAULT 'SEDA_ATAP_APPROVAL',
+        source_received_email_id INTEGER REFERENCES received_emails(id) ON DELETE SET NULL,
+        source_email_id VARCHAR(255) NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+        requires_manual_review BOOLEAN NOT NULL DEFAULT false,
+        customer_name TEXT,
+        installation_address TEXT,
+        application_number VARCHAR(255),
+        payload JSONB NOT NULL DEFAULT '{}',
+        api_request JSONB,
+        api_response JSONB,
+        api_attempts JSONB NOT NULL DEFAULT '[]',
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        next_retry_at TIMESTAMP,
+        claimed_at TIMESTAMP,
+        last_error TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMP,
+        UNIQUE (task_type, source_email_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_seda_tasks_status_retry
+        ON seda_tasks(status, requires_manual_review, next_retry_at);
+      CREATE INDEX IF NOT EXISTS idx_seda_tasks_source_email
+        ON seda_tasks(source_email_id);
+      CREATE INDEX IF NOT EXISTS idx_seda_tasks_created_at
+        ON seda_tasks(created_at);
+    `);
+
     // Older setups may have enforced global uniqueness on email_prefix/full_email,
     // which prevents sharing one email across multiple agents.
     const agentEmailUniqueConstraints = await client.query(`
@@ -738,6 +773,308 @@ export async function getReceivedDomains() {
   `);
 
   return result.rows.map(r => r.domain);
+}
+
+
+/**
+ * Create or update a durable SEDA pending task.
+ *
+ * The INSERT is the first success boundary. The worker never calls the
+ * external API until this row exists with status PENDING.
+ */
+export async function createSedaPendingTask(data) {
+  if (!pool) return null;
+
+  const {
+    taskType = 'SEDA_ATAP_APPROVAL',
+    sourceReceivedEmailId,
+    sourceEmailId,
+    customerName,
+    installationAddress,
+    applicationNumber,
+    payload = {},
+    requiresManualReview = false,
+    initialError = null,
+  } = data;
+
+  if (!sourceEmailId) {
+    throw new Error('sourceEmailId is required for a SEDA task');
+  }
+
+  const inserted = await pool.query(
+    `INSERT INTO seda_tasks
+      (task_type, source_received_email_id, source_email_id, status,
+       requires_manual_review, customer_name, installation_address,
+       application_number, payload, last_error)
+     VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (task_type, source_email_id) DO NOTHING
+     RETURNING *`,
+    [
+      taskType,
+      sourceReceivedEmailId || null,
+      sourceEmailId,
+      requiresManualReview,
+      customerName || null,
+      installationAddress || null,
+      applicationNumber || null,
+      JSON.stringify(payload),
+      initialError,
+    ]
+  );
+
+  if (inserted.rows[0]) {
+    return { task: inserted.rows[0], created: true };
+  }
+
+  // A repeated webhook must not create a duplicate, but a later content fetch
+  // may have better extracted fields. Never alter a completed task.
+  await pool.query(
+    `UPDATE seda_tasks
+     SET source_received_email_id = COALESCE(source_received_email_id, $1),
+         customer_name = COALESCE($2, customer_name),
+         installation_address = COALESCE($3, installation_address),
+         application_number = COALESCE($4, application_number),
+         payload = CASE WHEN status = 'COMPLETED' THEN payload ELSE $5::jsonb END,
+         requires_manual_review = CASE WHEN status = 'COMPLETED'
+           THEN false ELSE $6 END,
+         last_error = CASE WHEN status = 'COMPLETED'
+           THEN last_error ELSE $7 END,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE task_type = $8 AND source_email_id = $9`,
+    [
+      sourceReceivedEmailId || null,
+      customerName || null,
+      installationAddress || null,
+      applicationNumber || null,
+      JSON.stringify(payload),
+      requiresManualReview,
+      initialError,
+      taskType,
+      sourceEmailId,
+    ]
+  );
+
+  const existing = await pool.query(
+    `SELECT * FROM seda_tasks
+     WHERE task_type = $1 AND source_email_id = $2`,
+    [taskType, sourceEmailId]
+  );
+
+  return { task: existing.rows[0] || null, created: false };
+}
+
+/**
+ * Get a single SEDA task.
+ */
+export async function getSedaTaskById(id) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `SELECT * FROM seda_tasks WHERE id = $1`,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
+/**
+ * List SEDA tasks with optional status/manual-review filters.
+ */
+export async function getSedaTasks({ limit = 50, status = null, requiresManualReview = null } = {}) {
+  if (!pool) return [];
+
+  const values = [];
+  const conditions = [];
+
+  if (status) {
+    values.push(status);
+    conditions.push(`status = $${values.length}`);
+  }
+
+  if (requiresManualReview !== null && requiresManualReview !== undefined) {
+    values.push(requiresManualReview);
+    conditions.push(`requires_manual_review = $${values.length}`);
+  }
+
+  values.push(Math.min(Math.max(Number(limit) || 50, 1), 100));
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const result = await pool.query(
+    `SELECT * FROM seda_tasks
+     ${whereClause}
+     ORDER BY created_at DESC
+     LIMIT $${values.length}`,
+    values
+  );
+
+  return result.rows;
+}
+
+/**
+ * Get SEDA task counts by state.
+ */
+export async function getSedaTaskStats() {
+  if (!pool) {
+    return { total: 0, pending: 0, processing: 0, completed: 0, manual_review: 0 };
+  }
+
+  const result = await pool.query(`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE status = 'PENDING')::int AS pending,
+      COUNT(*) FILTER (WHERE status = 'PROCESSING')::int AS processing,
+      COUNT(*) FILTER (WHERE status = 'COMPLETED')::int AS completed,
+      COUNT(*) FILTER (WHERE requires_manual_review = true)::int AS manual_review
+    FROM seda_tasks
+  `);
+
+  return result.rows[0];
+}
+
+/**
+ * Atomically claim the next retryable PENDING task.
+ */
+export async function claimNextSedaTask({ staleAfterMs = 15 * 60 * 1000 } = {}) {
+  if (!pool) return null;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      `UPDATE seda_tasks
+       SET status = 'PENDING',
+           claimed_at = NULL,
+           next_retry_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP,
+           last_error = COALESCE(last_error, 'Recovered stale PROCESSING task')
+       WHERE status = 'PROCESSING'
+         AND claimed_at IS NOT NULL
+         AND claimed_at < CURRENT_TIMESTAMP - ($1 * INTERVAL '1 millisecond')`,
+      [staleAfterMs]
+    );
+
+    const next = await client.query(`
+      SELECT *
+      FROM seda_tasks
+      WHERE status = 'PENDING'
+        AND requires_manual_review = false
+        AND (next_retry_at IS NULL OR next_retry_at <= CURRENT_TIMESTAMP)
+      ORDER BY created_at ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    `);
+
+    if (!next.rows[0]) {
+      await client.query('COMMIT');
+      return null;
+    }
+
+    const claimed = await client.query(
+      `UPDATE seda_tasks
+       SET status = 'PROCESSING',
+           claimed_at = CURRENT_TIMESTAMP,
+           attempt_count = attempt_count + 1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [next.rows[0].id]
+    );
+
+    await client.query('COMMIT');
+    return claimed.rows[0] || null;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Mark a SEDA task complete only after the external API confirms updated:true.
+ */
+export async function completeSedaTask(id, data = {}) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `UPDATE seda_tasks
+     SET status = 'COMPLETED',
+         requires_manual_review = false,
+         api_request = $1,
+         api_response = $2,
+         api_attempts = $3,
+         last_error = NULL,
+         next_retry_at = NULL,
+         claimed_at = NULL,
+         completed_at = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $4
+     RETURNING *`,
+    [
+      data.apiRequest ? JSON.stringify(data.apiRequest) : null,
+      data.apiResponse ? JSON.stringify(data.apiResponse) : null,
+      JSON.stringify(data.apiAttempts || []),
+      id,
+    ]
+  );
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Return a task to PENDING for retry or manual review.
+ */
+export async function deferSedaTask(id, data = {}) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `UPDATE seda_tasks
+     SET status = 'PENDING',
+         requires_manual_review = $1,
+         api_request = $2,
+         api_response = $3,
+         api_attempts = $4,
+         last_error = $5,
+         next_retry_at = $6,
+         claimed_at = NULL,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $7
+     RETURNING *`,
+    [
+      Boolean(data.requiresManualReview),
+      data.apiRequest ? JSON.stringify(data.apiRequest) : null,
+      data.apiResponse ? JSON.stringify(data.apiResponse) : null,
+      JSON.stringify(data.apiAttempts || []),
+      data.lastError || null,
+      data.nextRetryAt || null,
+      id,
+    ]
+  );
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Make a task retryable again after manual review or an operator action.
+ */
+export async function retrySedaTask(id) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `UPDATE seda_tasks
+     SET status = 'PENDING',
+         requires_manual_review = false,
+         next_retry_at = NULL,
+         claimed_at = NULL,
+         last_error = NULL,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1 AND status <> 'COMPLETED'
+     RETURNING *`,
+    [id]
+  );
+
+  return result.rows[0] || null;
 }
 
 // ============================================

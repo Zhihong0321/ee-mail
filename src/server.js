@@ -41,6 +41,14 @@ import {
   deleteAgentEmailAccount
 } from './database.js';
 import { getReceivedEmailWithRetry } from './resend-client.js';
+import {
+  enqueueSedaTaskForReceivedEmail,
+  enqueueSedaTaskForReceivedEmailId,
+  retrySedaTaskById,
+  getSedaTasks,
+  getSedaTaskById,
+  getSedaTaskStats,
+} from './seda-task-service.js';
 import { fetchAttachments, downloadAttachment } from './resend-client.js';
 
 // Request body parser
@@ -63,6 +71,21 @@ function parseBody(req) {
 function json(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
+}
+
+function requireTaskApiKey(req, res) {
+  if (!config.AGENT_API_KEY) {
+    json(res, 503, { success: false, error: 'AGENT_API_KEY is not configured' });
+    return false;
+  }
+
+  const authorization = req.headers.authorization || '';
+  if (authorization !== `Bearer ${config.AGENT_API_KEY}`) {
+    json(res, 401, { success: false, error: 'Invalid API key' });
+    return false;
+  }
+
+  return true;
 }
 
 // Static file serving
@@ -293,11 +316,20 @@ const routes = {
                 console.log(`🔄 Fetching email content for ${emailData.email_id}...`);
                 const fullEmail = await getReceivedEmailWithRetry(emailData.email_id, domain);
                 
-                await updateReceivedEmail(emailData.email_id, {
+                const updatedEmail = await updateReceivedEmail(emailData.email_id, {
                   html: fullEmail.html,
                   text: fullEmail.text,
                   headers: fullEmail.headers,
                 });
+
+                const refreshedEmail = updatedEmail ||
+                  await getReceivedEmailByEmailId(emailData.email_id);
+                if (refreshedEmail) {
+                  const taskResult = await enqueueSedaTaskForReceivedEmail(refreshedEmail);
+                  if (taskResult.matched) {
+                    console.log(`📌 SEDA approval task ${taskResult.created ? 'created' : 'already exists'}: ${taskResult.task?.id}`);
+                  }
+                }
                 
                 console.log('✅ Email content updated');
               } catch (err) {
@@ -585,8 +617,95 @@ const routes = {
     }
   },
 
+  // SEDA ATAP approval tasks
+  'GET /seda-tasks': async (req, res) => {
+    if (!requireTaskApiKey(req, res)) return;
+
+    try {
+      const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
+      const status = req.query?.status || null;
+      const reviewParam = req.query?.requires_manual_review;
+      const requiresManualReview = reviewParam === 'true'
+        ? true
+        : reviewParam === 'false'
+          ? false
+          : null;
+
+      const tasks = await getSedaTasks({
+        limit,
+        status,
+        requiresManualReview,
+      });
+
+      json(res, 200, { success: true, data: tasks });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  'GET /seda-tasks/stats': async (req, res) => {
+    if (!requireTaskApiKey(req, res)) return;
+
+    try {
+      const stats = await getSedaTaskStats();
+      json(res, 200, { success: true, data: stats });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  'GET /seda-tasks/:id': async (req, res) => {
+    if (!requireTaskApiKey(req, res)) return;
+
+    try {
+      const task = await getSedaTaskById(parseInt(req.params.id));
+      if (!task) {
+        return json(res, 404, { success: false, error: 'SEDA task not found' });
+      }
+
+      json(res, 200, { success: true, data: task });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  'POST /seda-tasks/from-received-email/:id': async (req, res) => {
+    if (!requireTaskApiKey(req, res)) return;
+
+    try {
+      const result = await enqueueSedaTaskForReceivedEmailId(req.params.id);
+      if (!result.matched) {
+        return json(res, 422, {
+          success: false,
+          error: result.classification?.reason || 'Email did not match SEDA ATAP approval rules',
+          data: result,
+        });
+      }
+
+      json(res, result.created ? 201 : 200, {
+        success: true,
+        data: result,
+      });
+    } catch (err) {
+      json(res, err.status || 500, { success: false, error: err.message });
+    }
+  },
+
+  'POST /seda-tasks/:id/retry': async (req, res) => {
+    if (!requireTaskApiKey(req, res)) return;
+
+    try {
+      const task = await retrySedaTaskById(parseInt(req.params.id));
+      json(res, 200, { success: true, data: task });
+    } catch (err) {
+      json(res, err.status || 500, { success: false, error: err.message });
+    }
+  },
+
   // Re-fetch email content from Resend API
   'POST /received-emails/fetch': async (req, res) => {
+    if (!requireTaskApiKey(req, res)) return;
+
     try {
       if (!isDatabaseAvailable()) {
         return json(res, 503, { success: false, error: 'Database not available' });
@@ -613,12 +732,20 @@ const routes = {
         headers: fullEmail.headers,
       });
 
-      json(res, 200, { 
+      const refreshedEmail = updated || await getReceivedEmailByEmailId(emailId);
+      const taskResult = refreshedEmail
+        ? await enqueueSedaTaskForReceivedEmail(refreshedEmail)
+        : { matched: false };
+
+      json(res, 200, {
         success: true, 
         message: 'Email content updated',
         data: {
           hasHtml: !!fullEmail.html,
           hasText: !!fullEmail.text,
+          sedaTask: taskResult.matched
+            ? { created: taskResult.created, task: taskResult.task }
+            : null,
         }
       });
     } catch (err) {
@@ -934,6 +1061,11 @@ const routes = {
         }
       },
       endpoints: [
+        { method: 'GET', path: '/seda-tasks', description: 'List protected SEDA ATAP approval tasks' },
+        { method: 'GET', path: '/seda-tasks/stats', description: 'Get protected SEDA task counts' },
+        { method: 'GET', path: '/seda-tasks/:id', description: 'Get one protected SEDA task' },
+        { method: 'POST', path: '/seda-tasks/from-received-email/:id', description: 'Create a protected PENDING task from an existing received email' },
+        { method: 'POST', path: '/seda-tasks/:id/retry', description: 'Make a protected SEDA task retryable' },
         { method: 'GET', path: '/health', description: 'Health check' },
         { method: 'GET', path: '/stats', description: 'Email statistics (sent)' },
         { method: 'GET', path: '/emails', description: 'List sent emails with optional domain and search filters' },
