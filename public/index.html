@@ -1078,6 +1078,17 @@
     </div>
   </div>
 
+  <!-- SEDA Match Compare Modal -->
+  <div class="modal-overlay" id="seda-compare-modal">
+    <div class="modal" style="max-width: 800px;">
+      <div class="modal-header">
+        <h3 id="seda-compare-title">Compare Match</h3>
+        <button class="modal-close" onclick="closeSedaCompareModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="seda-compare-body"></div>
+    </div>
+  </div>
+
   <script>
     let currentEmail = null;
     let currentTab = 'sent';
@@ -1385,10 +1396,95 @@
                 ${error}
               </div>
             </div>
-            <div class="email-date">${formatDate(task.updated_at || task.created_at)}</div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.5rem;">
+              <div class="email-date">${formatDate(task.updated_at || task.created_at)}</div>
+              <button class="btn btn-secondary" style="font-size:0.75rem; padding:0.3rem 0.6rem;" onclick="showSedaCompareModal(${task.id})">🔍 Compare</button>
+            </div>
           </div>
         `;
       }).join('');
+    }
+
+    async function showSedaCompareModal(taskId) {
+      const modal = document.getElementById('seda-compare-modal');
+      const body = document.getElementById('seda-compare-body');
+      document.getElementById('seda-compare-title').textContent = `Compare Match — Task #${taskId}`;
+      body.innerHTML = '<div class="loading-body"><div class="loading-spinner"></div>Loading task details...</div>';
+      modal.classList.add('active');
+
+      try {
+        const res = await fetch(`/seda-tasks/${taskId}`);
+        const result = await res.json();
+        if (!result.success || !result.data) {
+          body.innerHTML = `<div class="error-body">${escapeHtml(result.error || 'Failed to load task details.')}</div>`;
+          return;
+        }
+        body.innerHTML = renderSedaCompareBody(result.data);
+      } catch (err) {
+        body.innerHTML = `<div class="error-body">Network error: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderSedaCompareBody(task) {
+      const attempts = Array.isArray(task.api_attempts) ? task.api_attempts : [];
+
+      const attemptsRows = attempts.length > 0
+        ? attempts.map((a, i) => {
+            const req = a.request || {};
+            const resBody = a.body || {};
+            const ok = resBody.success === true && resBody.updated === true;
+            const outcome = ok
+              ? '<span style="color: var(--success);">✅ Matched</span>'
+              : `<span style="color: var(--danger);">❌ ${escapeHtml(resBody.error || `HTTP ${a.httpStatus || '?'}`)}</span>`;
+            return `
+              <tr>
+                <td style="padding:0.5rem; border-bottom:1px solid var(--border-color);">${i + 1}</td>
+                <td style="padding:0.5rem; border-bottom:1px solid var(--border-color);">${escapeHtml(req.name || '-')}</td>
+                <td style="padding:0.5rem; border-bottom:1px solid var(--border-color);">${escapeHtml(req.address || '-')}</td>
+                <td style="padding:0.5rem; border-bottom:1px solid var(--border-color);">${outcome}</td>
+              </tr>
+            `;
+          }).join('')
+        : `<tr><td colspan="4" style="padding:0.5rem; color: var(--text-muted);">No attempts recorded against the SEDA API yet.</td></tr>`;
+
+      const lastError = task.last_error
+        ? `<div class="task-detail" style="margin-top:0.75rem;">⚠️ <strong>Last error:</strong> ${escapeHtml(task.last_error)}</div>`
+        : '';
+
+      return `
+        <div class="email-detail-header">
+          <h4 style="margin-bottom:0.5rem;">📧 Extracted from email</h4>
+          <div class="email-meta" style="flex-direction:column; align-items:flex-start; gap:0.35rem;">
+            <span><strong>Customer name:</strong> ${escapeHtml(task.customer_name || 'Not extracted')}</span>
+            <span><strong>Installation address:</strong> ${escapeHtml(task.installation_address || 'Not extracted')}</span>
+            <span><strong>Application number:</strong> ${escapeHtml(task.application_number || '-')}</span>
+            <span><strong>Source email:</strong> ${escapeHtml(task.source_email_id || '-')}</span>
+          </div>
+        </div>
+
+        <h4 style="margin: 1.25rem 0 0.5rem;">🔎 Compared against SEDA registration (name/address sent per attempt)</h4>
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+            <thead>
+              <tr style="text-align:left; color: var(--text-muted);">
+                <th style="padding:0.5rem; border-bottom:1px solid var(--border-color);">#</th>
+                <th style="padding:0.5rem; border-bottom:1px solid var(--border-color);">Name tried</th>
+                <th style="padding:0.5rem; border-bottom:1px solid var(--border-color);">Address sent</th>
+                <th style="padding:0.5rem; border-bottom:1px solid var(--border-color);">Result</th>
+              </tr>
+            </thead>
+            <tbody>${attemptsRows}</tbody>
+          </table>
+        </div>
+        ${lastError}
+
+        <h4 style="margin: 1.25rem 0 0.5rem;">📄 Raw last API response</h4>
+        <pre style="white-space:pre-wrap; font-size:0.75rem; background: rgba(0,0,0,0.2); padding:0.75rem; border-radius:8px; overflow-x:auto;">${escapeHtml(JSON.stringify(task.api_response || {}, null, 2))}</pre>
+      `;
+    }
+
+    function closeSedaCompareModal() {
+      document.getElementById('seda-compare-modal').classList.remove('active');
     }
 
     async function viewSentEmail(id) {
