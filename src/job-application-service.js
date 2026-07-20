@@ -42,7 +42,9 @@ function normalizeClassification(value) {
 }
 
 function applicationPrompt(email) {
-  const body = email.text || stripHtml(email.html);
+  const body = email.text
+    || email.text_content
+    || stripHtml(email.html || email.html_content);
   return `Classify and extract this inbound email for a recruitment mailbox.
 
 Return JSON only with this exact shape:
