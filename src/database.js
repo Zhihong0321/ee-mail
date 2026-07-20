@@ -203,6 +203,51 @@ export async function initTables() {
         ON agent_email_accounts(full_email);
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS hod_departments (
+      id SERIAL PRIMARY KEY,
+      department VARCHAR(255) NOT NULL UNIQUE,
+      hod_whatsapp_number VARCHAR(32) NOT NULL,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_hod_departments_active
+        ON hod_departments(is_active);
+
+      CREATE TABLE IF NOT EXISTS job_applications (
+      id SERIAL PRIMARY KEY,
+      received_email_id INTEGER NOT NULL UNIQUE REFERENCES received_emails(id) ON DELETE CASCADE,
+      classification VARCHAR(40) NOT NULL,
+      confidence NUMERIC(5,4) DEFAULT 0,
+      classification_reason TEXT,
+      applicant_name TEXT,
+      applicant_email TEXT,
+      phone TEXT,
+      whatsapp_number TEXT,
+      applied_position TEXT,
+      department TEXT,
+      years_experience TEXT,
+      location TEXT,
+      availability JSONB DEFAULT '[]',
+      resume_summary TEXT,
+      extraction JSONB NOT NULL DEFAULT '{}',
+      processing_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      status VARCHAR(40) NOT NULL DEFAULT 'new',
+      acknowledgement_sent_at TIMESTAMP,
+      hod_notified_at TIMESTAMP,
+      notification_error TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_job_applications_status
+        ON job_applications(status, created_at);
+      CREATE INDEX IF NOT EXISTS idx_job_applications_department
+        ON job_applications(department);
+    `);
+
 
     // Durable SEDA ATAP approval task queue
     await client.query(`
@@ -632,6 +677,195 @@ export async function getReceivedEmailByEmailId(emailId) {
   );
 
   return result.rows[0] || null;
+}
+
+export async function getJobApplicationByReceivedEmailId(receivedEmailId) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `SELECT * FROM job_applications WHERE received_email_id = $1`,
+    [receivedEmailId]
+  );
+  return result.rows[0] || null;
+}
+
+export async function getJobApplicationById(id) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `SELECT * FROM job_applications WHERE id = $1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
+export async function saveJobApplication(data) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `INSERT INTO job_applications (
+      received_email_id, classification, confidence, classification_reason,
+      applicant_name, applicant_email, phone, whatsapp_number, applied_position,
+      department, years_experience, location, availability, resume_summary,
+      extraction, processing_status, status
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+    )
+    ON CONFLICT (received_email_id) DO UPDATE SET
+      classification = EXCLUDED.classification,
+      confidence = EXCLUDED.confidence,
+      classification_reason = EXCLUDED.classification_reason,
+      applicant_name = EXCLUDED.applicant_name,
+      applicant_email = EXCLUDED.applicant_email,
+      phone = EXCLUDED.phone,
+      whatsapp_number = EXCLUDED.whatsapp_number,
+      applied_position = EXCLUDED.applied_position,
+      department = EXCLUDED.department,
+      years_experience = EXCLUDED.years_experience,
+      location = EXCLUDED.location,
+      availability = EXCLUDED.availability,
+      resume_summary = EXCLUDED.resume_summary,
+      extraction = EXCLUDED.extraction,
+      processing_status = EXCLUDED.processing_status,
+      updated_at = CURRENT_TIMESTAMP
+    RETURNING *`,
+    [
+      data.receivedEmailId,
+      data.classification,
+      data.confidence || 0,
+      data.classificationReason || null,
+      data.applicantName || null,
+      data.applicantEmail || null,
+      data.phone || null,
+      data.whatsappNumber || null,
+      data.appliedPosition || null,
+      data.department || null,
+      data.yearsExperience || null,
+      data.location || null,
+      JSON.stringify(data.availability || []),
+      data.resumeSummary || null,
+      JSON.stringify(data.extraction || {}),
+      data.processingStatus || 'pending',
+      data.status || 'new',
+    ]
+  );
+  return result.rows[0] || null;
+}
+
+export async function updateJobApplication(id, data) {
+  if (!pool) return null;
+
+  const columnMap = {
+    processingStatus: 'processing_status',
+    status: 'status',
+    acknowledgementSentAt: 'acknowledgement_sent_at',
+    hodNotifiedAt: 'hod_notified_at',
+    notificationError: 'notification_error',
+    whatsappNumber: 'whatsapp_number',
+    availability: 'availability',
+  };
+  const updates = [];
+  const values = [];
+
+  for (const [key, value] of Object.entries(data)) {
+    const column = columnMap[key];
+    if (!column) continue;
+    values.push(key === 'availability' ? JSON.stringify(value || []) : value);
+    updates.push(`${column} = $${values.length}`);
+  }
+
+  if (!updates.length) return getJobApplicationById(id);
+
+  values.push(id);
+  const result = await pool.query(
+    `UPDATE job_applications
+     SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP
+     WHERE id = $${values.length}
+     RETURNING *`,
+    values
+  );
+  return result.rows[0] || null;
+}
+
+export async function getJobApplications({ limit = 100, status = null } = {}) {
+  if (!pool) return [];
+
+  const values = [];
+  const conditions = [];
+  if (status) {
+    values.push(status);
+    conditions.push(`ja.status = $${values.length}`);
+  }
+  values.push(Math.min(Number(limit) || 100, 500));
+
+  const result = await pool.query(
+    `SELECT ja.*, re.subject, re.from_email, re.to_email, re.received_at
+     FROM job_applications ja
+     JOIN received_emails re ON re.id = ja.received_email_id
+     ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+     ORDER BY ja.created_at DESC
+     LIMIT $${values.length}`,
+    values
+  );
+  return result.rows;
+}
+
+export async function getHodDepartments() {
+  if (!pool) return [];
+
+  const result = await pool.query(
+    `SELECT * FROM hod_departments ORDER BY department ASC`
+  );
+  return result.rows;
+}
+
+export async function getHodDepartment(department) {
+  if (!pool) return null;
+
+  const normalized = String(department || '').trim();
+  if (normalized) {
+    const result = await pool.query(
+      `SELECT * FROM hod_departments
+       WHERE is_active = true AND LOWER(department) = LOWER($1)
+       LIMIT 1`,
+      [normalized]
+    );
+    if (result.rows[0]) return result.rows[0];
+  }
+
+  const fallback = await pool.query(
+    `SELECT * FROM hod_departments
+     WHERE is_active = true AND LOWER(department) IN ('default', 'general')
+     ORDER BY id ASC
+     LIMIT 1`
+  );
+  return fallback.rows[0] || null;
+}
+
+export async function saveHodDepartment(department, hodWhatsappNumber, isActive = true) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `INSERT INTO hod_departments (department, hod_whatsapp_number, is_active)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (department) DO UPDATE SET
+       hod_whatsapp_number = EXCLUDED.hod_whatsapp_number,
+       is_active = EXCLUDED.is_active,
+       updated_at = CURRENT_TIMESTAMP
+     RETURNING *`,
+    [String(department).trim(), String(hodWhatsappNumber).replace(/[^\d+]/g, ''), isActive]
+  );
+  return result.rows[0] || null;
+}
+
+export async function deleteHodDepartment(id) {
+  if (!pool) return false;
+
+  const result = await pool.query(
+    `DELETE FROM hod_departments WHERE id = $1`,
+    [id]
+  );
+  return result.rowCount > 0;
 }
 
 /**

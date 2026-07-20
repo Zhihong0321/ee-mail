@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HOD WhatsApp Settings - EE-Mail</title>
+  <style>
+    :root { color-scheme: dark; --bg: #0b0f19; --panel: #111827; --line: #263244; --text: #f3f4f6; --muted: #9ca3af; --accent: #6366f1; --danger: #ef4444; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 Inter, Arial, sans-serif; }
+    main { max-width: 980px; margin: 0 auto; padding: 32px 20px 60px; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 28px; }
+    h1, h2 { margin: 0; }
+    h1 { font-size: 28px; }
+    h2 { font-size: 18px; margin-bottom: 16px; }
+    a { color: #a5b4fc; }
+    .panel { background: var(--panel); border: 1px solid var(--line); padding: 20px; margin-bottom: 20px; }
+    .muted { color: var(--muted); }
+    form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+    label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
+    input { width: 100%; padding: 10px 11px; background: #0b1220; border: 1px solid var(--line); color: var(--text); }
+    button { border: 0; padding: 10px 14px; background: var(--accent); color: white; cursor: pointer; }
+    button.danger { background: transparent; color: #fca5a5; border: 1px solid #7f1d1d; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+    .notice { min-height: 24px; margin: 12px 0; }
+    .success { color: #86efac; }
+    .error { color: #fca5a5; }
+    @media (max-width: 720px) {
+      header { align-items: flex-start; flex-direction: column; }
+      form { grid-template-columns: 1fr; }
+      table { display: block; overflow-x: auto; white-space: nowrap; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>HOD WhatsApp Settings</h1>
+        <p class="muted">Map extracted job-application departments to the WhatsApp number that receives notifications.</p>
+      </div>
+      <a href="/">Back to dashboard</a>
+    </header>
+
+    <section class="panel">
+      <h2>Add or update department</h2>
+      <form id="hod-form">
+        <label>Department
+          <input id="department" required placeholder="Engineering">
+        </label>
+        <label>HOD WhatsApp number
+          <input id="number" required inputmode="tel" placeholder="60123456789">
+        </label>
+        <button type="submit">Save mapping</button>
+      </form>
+      <div id="notice" class="notice"></div>
+      <p class="muted">Use department <strong>default</strong> for applications where no matching department is extracted.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Configured mappings</h2>
+      <div id="content" class="muted">Loading...</div>
+    </section>
+  </main>
+
+  <script>
+    const notice = document.getElementById('notice');
+    const content = document.getElementById('content');
+
+    function showNotice(message, type) {
+      notice.textContent = message;
+      notice.className = `notice ${type || ''}`;
+      setTimeout(() => { notice.textContent = ''; }, 5000);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+      }[char]));
+    }
+
+    async function loadMappings() {
+      const response = await fetch('/hod-departments');
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Failed to load mappings');
+      if (!result.data.length) {
+        content.innerHTML = '<p class="muted">No HOD mappings configured.</p>';
+        return;
+      }
+      content.innerHTML = `<table>
+        <thead><tr><th>Department</th><th>WhatsApp number</th><th>Status</th><th></th></tr></thead>
+        <tbody>${result.data.map(row => `<tr>
+          <td>${escapeHtml(row.department)}</td>
+          <td>${escapeHtml(row.hod_whatsapp_number)}</td>
+          <td>${row.is_active ? 'Active' : 'Inactive'}</td>
+          <td><button class="danger" onclick="removeMapping(${row.id})">Delete</button></td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    }
+
+    async function removeMapping(id) {
+      if (!confirm('Delete this HOD mapping?')) return;
+      const response = await fetch(`/hod-departments/${id}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        showNotice(result.error || 'Delete failed', 'error');
+        return;
+      }
+      showNotice('Mapping deleted', 'success');
+      await loadMappings();
+    }
+
+    document.getElementById('hod-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const response = await fetch('/hod-departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          department: document.getElementById('department').value.trim(),
+          hod_whatsapp_number: document.getElementById('number').value.trim()
+        })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        showNotice(result.error || 'Save failed', 'error');
+        return;
+      }
+      event.target.reset();
+      showNotice('Mapping saved', 'success');
+      await loadMappings();
+    });
+
+    loadMappings().catch(error => showNotice(error.message, 'error'));
+  </script>
+</body>
+</html>

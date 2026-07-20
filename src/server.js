@@ -27,6 +27,10 @@ import {
   getEmailByResendId,
   getReceivedEmailById,
   getReceivedEmailByEmailId,
+  getJobApplications,
+  getHodDepartments,
+  saveHodDepartment,
+  deleteHodDepartment,
   getAllApiKeys,
   saveApiKey,
   getApiKeyById,
@@ -41,6 +45,7 @@ import {
   deleteAgentEmailAccount
 } from './database.js';
 import { getReceivedEmailWithRetry } from './resend-client.js';
+import { processJobApplicationEmail } from './job-application-service.js';
 import {
   enqueueSedaTaskForReceivedEmail,
   enqueueSedaTaskForReceivedEmailId,
@@ -311,6 +316,24 @@ const routes = {
                 const refreshedEmail = updatedEmail ||
                   await getReceivedEmailByEmailId(emailData.email_id);
                 if (refreshedEmail) {
+                  const recipients = String(refreshedEmail.to_email || '')
+                    .split(',')
+                    .map(value => value.trim().toLowerCase());
+                  const isVacancyEmail = recipients.includes('vacancy@eternalgy.me');
+
+                  if (isVacancyEmail) {
+                    try {
+                      const applicationResult = await processJobApplicationEmail(refreshedEmail);
+                      console.log('🧾 Job application processing result:', {
+                        emailId: emailData.email_id,
+                        skipped: applicationResult?.skipped || false,
+                        status: applicationResult?.status,
+                      });
+                    } catch (jobErr) {
+                      console.error('❌ Job application processing failed:', jobErr.message);
+                    }
+                  }
+
                   const taskResult = await enqueueSedaTaskForReceivedEmail(refreshedEmail);
                   if (taskResult.matched) {
                     console.log(`📌 SEDA approval task ${taskResult.created ? 'created' : 'already exists'}: ${taskResult.task?.id}`);
@@ -974,6 +997,78 @@ const routes = {
     }
   },
 
+  // ============================================
+  // Recruitment Automation (Admin UI)
+  // ============================================
+
+  'GET /job-applications': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const applications = await getJobApplications({
+        limit: req.query?.limit,
+        status: req.query?.status || null,
+      });
+      json(res, 200, { success: true, data: applications });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  'GET /hod-departments': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+      json(res, 200, { success: true, data: await getHodDepartments() });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  'POST /hod-departments': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const body = await parseBody(req);
+      if (!body.department || !body.hod_whatsapp_number) {
+        return json(res, 400, {
+          success: false,
+          error: 'Missing required fields: department, hod_whatsapp_number',
+        });
+      }
+
+      const result = await saveHodDepartment(
+        body.department,
+        body.hod_whatsapp_number,
+        body.is_active !== false
+      );
+      json(res, 200, { success: true, data: result });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  'DELETE /hod-departments/:id': async (req, res) => {
+    try {
+      if (!isDatabaseAvailable()) {
+        return json(res, 503, { success: false, error: 'Database not available' });
+      }
+
+      const deleted = await deleteHodDepartment(Number(req.params.id));
+      if (!deleted) {
+        return json(res, 404, { success: false, error: 'HOD department not found' });
+      }
+      json(res, 200, { success: true });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
   // API docs
   'GET /api': async (req, res) => {
     json(res, 200, {
@@ -1080,6 +1175,10 @@ const routes = {
         { method: 'GET', path: '/agent-email-accounts', description: 'List agent-to-email assignments' },
         { method: 'POST', path: '/agent-email-accounts', description: 'Create agent email assignment' },
         { method: 'DELETE', path: '/agent-email-accounts/:id', description: 'Delete agent email assignment' },
+        { method: 'GET', path: '/job-applications', description: 'List classified recruitment applications' },
+        { method: 'GET', path: '/hod-departments', description: 'List department HOD WhatsApp mappings' },
+        { method: 'POST', path: '/hod-departments', description: 'Create or update a department HOD mapping' },
+        { method: 'DELETE', path: '/hod-departments/:id', description: 'Delete a department HOD mapping' },
       ],
     });
   },
