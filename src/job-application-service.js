@@ -1,6 +1,7 @@
 import config from './config.js';
 import { sendEmail } from './email-service.js';
 import {
+  getHodDepartments,
   getHodDepartment,
   getJobApplicationByReceivedEmailId,
   saveJobApplication,
@@ -41,10 +42,13 @@ function normalizeClassification(value) {
   return CLASSIFICATIONS.has(classification) ? classification : 'uncertain';
 }
 
-function applicationPrompt(email) {
+function applicationPrompt(email, hodDepartments = []) {
   const body = email.text
     || email.text_content
     || stripHtml(email.html || email.html_content);
+  const availableDepartments = hodDepartments
+    .filter(department => department?.is_active !== false && department?.department)
+    .map(department => department.department);
   return `Classify and extract this inbound email for a recruitment mailbox.
 
 Return JSON only with this exact shape:
@@ -71,6 +75,9 @@ Rules:
 - An email asking about a vacancy but lacking enough information is "uncertain".
 - Marketing, invoices, automated notices, and unrelated personal messages are "not_job_application".
 - Use the sender email as applicant.email when the message does not provide another email.
+- Choose applicant.department from this active HOD department list when the role, skills, or experience clearly match one of them: ${JSON.stringify(availableDepartments)}
+- Return the exact department name from that list. Do not invent a department name.
+- Use null only when the available list has no reasonable match.
 - Never invent values. Use null or [] when missing.
 
 Sender: ${email.from_email}
@@ -87,6 +94,7 @@ async function classifyAndExtract(email) {
     throw new Error('MIMO_API_KEY is not configured');
   }
 
+  const hodDepartments = await getHodDepartments();
   const response = await fetch(`${config.MIMO_API_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -102,7 +110,7 @@ async function classifyAndExtract(email) {
           role: 'system',
           content: 'You extract recruitment emails into conservative structured JSON.',
         },
-        { role: 'user', content: applicationPrompt(email) },
+        { role: 'user', content: applicationPrompt(email, hodDepartments) },
       ],
     }),
   });
