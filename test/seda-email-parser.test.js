@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   classifySedaApprovalEmail,
   parseSedaApprovalEmail,
+  extractEmailAddresses,
+  extractDomainFromEmail,
 } from '../src/seda-email-parser.js';
 
 const sampleEmail = {
@@ -70,4 +72,21 @@ test('requires seda.gov.my in message headers or body', () => {
   });
   assert.equal(result.matched, false);
   assert.equal(result.stage, 'seda_domain');
+});
+
+test('extractEmailAddresses converts to lower case and handles display names, arrays, objects', () => {
+  assert.deepEqual(extractEmailAddresses('Pr@eternalgy.me'), ['pr@eternalgy.me']);
+  assert.deepEqual(extractEmailAddresses('PR Team <Pr@ETERNALGY.ME>'), ['pr@eternalgy.me']);
+  assert.deepEqual(extractEmailAddresses(['"PR Dept" <Pr@eternalgy.me>', 'VACANCY@eternalgy.me']), [
+    'pr@eternalgy.me',
+    'vacancy@eternalgy.me',
+  ]);
+  assert.deepEqual(extractEmailAddresses({ to: 'Pr@eternalgy.me' }), ['pr@eternalgy.me']);
+});
+
+test('extractDomainFromEmail parses clean lowercase domain from mixed inputs', () => {
+  assert.equal(extractDomainFromEmail('Pr@ETERNALGY.ME'), 'eternalgy.me');
+  assert.equal(extractDomainFromEmail('PR Team <Pr@Eternalgy.me>'), 'eternalgy.me');
+  assert.equal(extractDomainFromEmail(['PR <pr@eternalgy.me>']), 'eternalgy.me');
+  assert.equal(extractDomainFromEmail('anotherdomain.com'), 'anotherdomain.com');
 });

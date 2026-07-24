@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EE-Mail Recruitment Guide</title>
+  <style>
+    :root {
+      --ink: #182230;
+      --muted: #5f6b7a;
+      --line: #d9e0e8;
+      --paper: #ffffff;
+      --wash: #f5f8fc;
+      --blue: #2563eb;
+      --blue-dark: #173f9d;
+      --blue-soft: #eaf1ff;
+      --green: #11845b;
+      --green-soft: #e9f8f0;
+      --amber: #a15c00;
+      --amber-soft: #fff6df;
+      --red: #b42318;
+      --red-soft: #fff0ee;
+    }
+
+    * { box-sizing: border-box; }
+
+    @page {
+      size: A4 portrait;
+      margin: 14mm 15mm 15mm;
+    }
+
+    html { background: #e9eef5; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #e9eef5;
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.42;
+    }
+
+    .page {
+      width: 180mm;
+      min-height: 268mm;
+      margin: 12mm auto;
+      padding: 10mm 10mm 9mm;
+      background: var(--paper);
+      box-shadow: 0 5px 24px rgba(24, 34, 48, .10);
+      position: relative;
+      overflow: hidden;
+      page-break-after: always;
+      break-after: page;
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+
+    @media print {
+      html, body { background: #fff; }
+      body { font-size: 10pt; }
+      .page {
+        width: auto;
+        min-height: 0;
+        height: 268mm;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+        overflow: hidden;
+      }
+      .no-print { display: none !important; }
+    }
+
+    h1, h2, h3, p, ul, ol, figure, pre { margin-top: 0; }
+    h1, h2, h3 { line-height: 1.15; }
+    h1 { font-size: 25pt; letter-spacing: -.03em; margin-bottom: 4mm; }
+    h2 { font-size: 17pt; letter-spacing: -.015em; margin-bottom: 3mm; }
+    h3 { font-size: 11.5pt; margin-bottom: 1.5mm; }
+    p { margin-bottom: 3mm; }
+    ul, ol { padding-left: 6mm; margin-bottom: 3mm; }
+    li { margin-bottom: 1.5mm; }
+    strong { font-weight: 700; }
+    code {
+      color: var(--blue-dark);
+      background: var(--blue-soft);
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: .92em;
+    }
+
+    .eyebrow {
+      color: var(--blue);
+      font-size: 8.5pt;
+      font-weight: 800;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+      margin-bottom: 4mm;
+    }
+
+    .topline {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 3mm;
+      margin-bottom: 9mm;
+      color: var(--muted);
+      font-size: 8.5pt;
+    }
+
+    .brand {
+      color: var(--ink);
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+
+    .page-number {
+      font-weight: 700;
+      color: var(--blue-dark);
+    }
+
+    .lead {
+      max-width: 145mm;
+      color: var(--muted);
+      font-size: 12pt;
+      line-height: 1.5;
+      margin-bottom: 7mm;
+    }
+
+    .callout {
+      border: 1px solid #c9d8f7;
+      border-left: 5px solid var(--blue);
+      background: var(--blue-soft);
+      border-radius: 6px;
+      padding: 4mm 5mm;
+      margin: 4mm 0 6mm;
+    }
+
+    .callout p:last-child,
+    .note p:last-child { margin-bottom: 0; }
+
+    .section-label {
+      color: var(--muted);
+      font-size: 8pt;
+      font-weight: 800;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+      margin-bottom: 2mm;
+    }
+
+    .steps {
+      display: grid;
+      gap: 3mm;
+      margin: 4mm 0 6mm;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 10mm 1fr;
+      gap: 3mm;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 3.5mm;
+      background: #fff;
+      break-inside: avoid;
+    }
+
+    .step-number {
+      display: grid;
+      place-items: center;
+      width: 8mm;
+      height: 8mm;
+      color: #fff;
+      background: var(--blue);
+      border-radius: 50%;
+      font-weight: 800;
+    }
+
+    .step p { margin-bottom: 0; }
+
+    .outcomes {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 4mm;
+      margin-top: 4mm;
+    }
+
+    .outcome {
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      padding: 4mm;
+      break-inside: avoid;
+    }
+
+    .outcome h3 { display: flex; gap: 2mm; align-items: center; }
+    .outcome.good { background: var(--green-soft); border-color: #b9e8cf; }
+    .outcome.ask { background: var(--amber-soft); border-color: #f1d58c; }
+    .outcome.stop { background: #f6f7f9; }
+    .outcome p { margin-bottom: 0; color: var(--muted); font-size: 9.5pt; }
+    .icon { font-size: 13pt; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 7mm 1fr 7mm 1fr;
+      gap: 2mm;
+      align-items: center;
+      margin: 5mm 0 6mm;
+    }
+
+    .flow-box {
+      min-height: 23mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      border: 1px solid #b9c9e7;
+      border-radius: 7px;
+      background: var(--blue-soft);
+      padding: 3mm;
+      text-align: center;
+      break-inside: avoid;
+    }
+
+    .flow-box strong { color: var(--blue-dark); }
+    .flow-box small { color: var(--muted); margin-top: 1mm; }
+    .arrow { color: var(--blue); font-size: 17pt; text-align: center; font-weight: 800; }
+
+    .branch-title { margin: 2mm 0 3mm; }
+    .branches {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3mm;
+      margin-bottom: 6mm;
+    }
+
+    .branch {
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--blue);
+      border-radius: 6px;
+      padding: 3mm;
+      break-inside: avoid;
+    }
+
+    .branch.green { border-top-color: var(--green); background: var(--green-soft); }
+    .branch.amber { border-top-color: #d99000; background: var(--amber-soft); }
+    .branch.gray { border-top-color: #7d8794; background: #f6f7f9; }
+    .branch p { font-size: 9pt; color: var(--muted); margin-bottom: 0; }
+
+    .mock-browser {
+      border: 1px solid #bdc8d8;
+      border-radius: 7px;
+      overflow: hidden;
+      margin: 4mm 0 5mm;
+      break-inside: avoid;
+      box-shadow: 0 2px 7px rgba(24, 34, 48, .07);
+    }
+
+    .browser-bar {
+      display: flex;
+      align-items: center;
+      gap: 1.5mm;
+      padding: 2mm 3mm;
+      background: #edf1f7;
+      border-bottom: 1px solid #bdc8d8;
+    }
+
+    .dot { width: 2.2mm; height: 2.2mm; border-radius: 50%; background: #b9c4d2; }
+    .address {
+      flex: 1;
+      margin-left: 2mm;
+      padding: 1mm 2mm;
+      border-radius: 3px;
+      color: #607083;
+      background: #fff;
+      font-size: 7.5pt;
+    }
+
+    .mock-screen { display: grid; grid-template-columns: 37mm 1fr; min-height: 54mm; }
+    .mock-sidebar { color: #dbe7ff; background: #17243b; padding: 4mm 3mm; }
+    .mock-logo { color: #fff; font-weight: 800; font-size: 9pt; margin-bottom: 5mm; }
+    .mock-nav { color: #aebdd6; font-size: 7.5pt; margin: 2mm 0; }
+    .mock-nav.active { color: #fff; background: #2e6fee; border-radius: 4px; padding: 2mm; margin-left: -2mm; margin-right: -2mm; }
+    .mock-main { background: #f8fafc; padding: 4mm; }
+    .mock-heading { font-size: 10pt; font-weight: 800; margin-bottom: 3mm; }
+    .mock-card-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2mm; }
+    .mock-card { height: 10mm; background: #fff; border: 1px solid #e0e6ee; border-radius: 4px; }
+    .mock-panel { height: 22mm; background: #fff; border: 1px solid #e0e6ee; border-radius: 4px; margin-top: 3mm; }
+
+    .settings-layout { display: grid; grid-template-columns: 1fr 1.1fr; gap: 4mm; }
+    .settings-form, .settings-list { border: 1px solid var(--line); border-radius: 6px; padding: 4mm; background: #fff; }
+    .field { margin-bottom: 3mm; }
+    .field label { display: block; font-size: 8pt; color: var(--muted); font-weight: 700; margin-bottom: 1mm; }
+    .fake-input { height: 7mm; border: 1px solid #c9d3df; border-radius: 3px; padding: 1.5mm 2mm; color: #748193; font-size: 8pt; }
+    .fake-button { display: inline-block; border-radius: 4px; padding: 2mm 3mm; color: #fff; background: var(--blue); font-size: 8pt; font-weight: 700; }
+    .fake-row { display: grid; grid-template-columns: 1fr 1.2fr 13mm; gap: 2mm; padding: 2mm 0; border-bottom: 1px solid #e7ebf0; color: #5f6b7a; font-size: 7.5pt; }
+    .fake-row.header { color: var(--ink); font-weight: 800; padding-top: 0; }
+    .status { color: var(--green); font-weight: 800; }
+
+    .message-box {
+      white-space: pre-wrap;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #f7f9fc;
+      padding: 4mm;
+      margin: 4mm 0 5mm;
+      color: #334155;
+      font: 8.7pt/1.55 Consolas, "Courier New", monospace;
+      break-inside: avoid;
+    }
+
+    .note {
+      border-left: 5px solid #e5a21a;
+      border-radius: 5px;
+      background: var(--amber-soft);
+      padding: 3.5mm 4mm;
+      margin: 4mm 0;
+      break-inside: avoid;
+    }
+
+    .note strong { color: var(--amber); }
+
+    .dashboard-note {
+      border-left-color: var(--green);
+      background: var(--green-soft);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 4mm 0 5mm;
+      font-size: 8.8pt;
+      break-inside: avoid;
+    }
+
+    th, td { border: 1px solid var(--line); padding: 2.5mm 3mm; vertical-align: top; text-align: left; }
+    th { background: var(--blue-soft); color: var(--blue-dark); font-size: 8.5pt; }
+    td:first-child { font-weight: 700; width: 29%; }
+    td:nth-child(2) { width: 32%; }
+
+    .footer {
+      position: absolute;
+      bottom: 7mm;
+      left: 10mm;
+      right: 10mm;
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid var(--line);
+      padding-top: 2mm;
+      color: var(--muted);
+      font-size: 7.5pt;
+    }
+
+    .url { color: var(--blue-dark); word-break: break-word; }
+    .small { color: var(--muted); font-size: 8.5pt; }
+    .avoid-break { break-inside: avoid; }
+
+    .screen-help {
+      max-width: 180mm;
+      margin: 4mm auto;
+      color: #546273;
+      text-align: center;
+      font-size: 9pt;
+    }
+  </style>
+</head>
+<body>
+  <div class="screen-help no-print">Print this guide in <strong>A4 portrait</strong> for the best result.</div>
+
+  <main class="page" aria-labelledby="page-one-title">
+    <div class="topline">
+      <span class="brand">EE-Mail · HR QUICK GUIDE</span>
+      <span class="page-number">01 / 03</span>
+    </div>
+
+    <div class="eyebrow">New feature · simple explanation</div>
+    <h1 id="page-one-title">Automated job applications</h1>
+    <p class="lead">When a candidate emails <code>vacancy@eternalgy.me</code>, EE-Mail can read the message, save the application, reply to the candidate, and alert the correct Head of Department (HOD) on WhatsApp.</p>
+
+    <div class="callout">
+      <h3>What HR needs to remember</h3>
+      <p>The system works automatically. HR mainly needs to keep the HOD WhatsApp numbers up to date and check the dashboard when needed.</p>
+    </div>
+
+    <div class="section-label">The four-step journey</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <div><h3>A candidate sends an email</h3><p>They send their CV or job enquiry to <code>vacancy@eternalgy.me</code>.</p></div>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <div><h3>The system reads the email</h3><p>It checks whether the message looks like a job application and identifies the likely department.</p></div>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <div><h3>The candidate receives a reply</h3><p>For a clear application, an automatic reply confirms receipt and asks for a WhatsApp number and possible interview times.</p></div>
+      </div>
+      <div class="step">
+        <div class="step-number">4</div>
+        <div><h3>The right HOD is notified</h3><p>The system finds the department's saved WhatsApp number and sends the HOD a short summary.</p></div>
+      </div>
+    </div>
+
+    <div class="section-label">There are three possible results</div>
+    <div class="outcomes">
+      <article class="outcome good">
+        <h3><span class="icon">✓</span> Job application</h3>
+        <p>The application is saved, the candidate gets an automatic reply, and the matching HOD receives WhatsApp.</p>
+      </article>
+      <article class="outcome ask">
+        <h3><span class="icon">?</span> Unclear message</h3>
+        <p>The candidate receives a request to clarify the position or department. No HOD message is sent yet.</p>
+      </article>
+      <article class="outcome stop">
+        <h3><span class="icon">—</span> Not a job application</h3>
+        <p>The message is saved for record keeping and marked as ignored. No reply is sent.</p>
+      </article>
+    </div>
+
+    <div class="footer"><span>For HR colleagues · no technical knowledge required</span><span>EE-Mail</span></div>
+  </main>
+
+  <main class="page" aria-labelledby="page-two-title">
+    <div class="topline">
+      <span class="brand">EE-Mail · HOD NOTIFICATION</span>
+      <span class="page-number">02 / 03</span>
+    </div>
+
+    <div class="eyebrow">Keep this information updated</div>
+    <h2 id="page-two-title">How the system finds the right HOD</h2>
+    <p>The system matches the department in the application with a department listed in <strong>HOD WhatsApp Settings</strong>. The matching department's saved number is then used for the WhatsApp alert.</p>
+
+    <div class="flow" aria-label="HOD matching flow">
+      <div class="flow-box"><strong>Application</strong><small>Department identified</small></div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="flow-box"><strong>HOD Settings</strong><small>Department matched</small></div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="flow-box"><strong>WhatsApp</strong><small>HOD notified</small></div>
+    </div>
+
+    <h3>How to add or update a HOD number</h3>
+    <ol>
+      <li>Open the dashboard: <a class="url" href="https://ee-mail-production.up.railway.app/">ee-mail-production.up.railway.app</a></li>
+      <li>Click <strong>HOD WhatsApp Settings</strong> in the left sidebar.</li>
+      <li>Enter the department name, for example <code>Engineering</code>.</li>
+      <li>Enter the HOD WhatsApp number with country code, for example <code>60123456789</code>.</li>
+      <li>Click <strong>Save mapping</strong>. The list below the form shows the saved number and status.</li>
+    </ol>
+
+    <div class="mock-browser" role="img" aria-label="Illustration of the dashboard with HOD WhatsApp Settings selected">
+      <div class="browser-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="address">ee-mail-production.up.railway.app</span></div>
+      <div class="mock-screen">
+        <div class="mock-sidebar">
+          <div class="mock-logo">EE-MAIL</div>
+          <div class="mock-nav">Sent Outbox</div>
+          <div class="mock-nav active">HOD WhatsApp Settings</div>
+          <div class="mock-nav">API Keys</div>
+        </div>
+        <div class="mock-main">
+          <div class="mock-heading">HOD WhatsApp Settings</div>
+          <div class="mock-card-row"><div class="mock-card"></div><div class="mock-card"></div><div class="mock-card"></div></div>
+          <div class="mock-panel"></div>
+        </div>
+      </div>
+    </div>
+    <p class="small">Illustration: click the highlighted menu item in the real dashboard. The example above contains no real applicant information.</p>
+
+    <div class="note">
+      <strong>Important — add a “default” mapping.</strong>
+      <p>If the system cannot identify a specific department, it tries the department named <code>default</code> (or <code>general</code>). Adding a <code>default</code> number gives unmatched applications a safe destination.</p>
+    </div>
+
+    <h3>What the HOD receives on WhatsApp</h3>
+    <pre class="message-box">New job application received
+Name: [candidate name]
+Email: [candidate email]
+WhatsApp: [candidate WhatsApp]
+Position: [position applied for]
+Department: [matched department]
+Experience: [experience]
+Availability: [interview availability]
+Subject: [email subject]</pre>
+
+    <div class="footer"><span>Keep department names and numbers correct</span><span>EE-Mail</span></div>
+  </main>
+
+  <main class="page" aria-labelledby="page-three-title">
+    <div class="topline">
+      <span class="brand">EE-Mail · DAILY HR USE</span>
+      <span class="page-number">03 / 03</span>
+    </div>
+
+    <div class="eyebrow">Check, understand, act</div>
+    <h2 id="page-three-title">Where to check and what to do</h2>
+
+    <div class="callout dashboard-note">
+      <h3>Find the email in the dashboard</h3>
+      <p>Open <a class="url" href="https://ee-mail-production.up.railway.app/">https://ee-mail-production.up.railway.app/</a>, then open the <strong>Received Inbox</strong> tab. Click an email to read its details. Job applications are saved there even if the message needs clarification or a HOD number is missing.</p>
+    </div>
+
+    <h3>Quick troubleshooting</h3>
+    <table>
+      <thead>
+        <tr><th>What you see</th><th>What it usually means</th><th>What to do</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>No reply to the candidate</td>
+          <td>The email may be marked “not a job application” or “unclear”.</td>
+          <td>Check the Received Inbox. An unclear message will have a clarification reply.</td>
+        </tr>
+        <tr>
+          <td>HOD did not receive WhatsApp</td>
+          <td>No number is saved for the matched department.</td>
+          <td>Open HOD WhatsApp Settings and add or correct the department mapping.</td>
+        </tr>
+        <tr>
+          <td><code>notification_error</code></td>
+          <td>The department or fallback number is missing.</td>
+          <td>Add the matching department, or add a <code>default</code> mapping.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Simple checklist for HR</h3>
+    <div class="steps">
+      <div class="step"><div class="step-number">✓</div><div><p>Every active department has the correct HOD WhatsApp number.</p></div></div>
+      <div class="step"><div class="step-number">✓</div><div><p>A <code>default</code> fallback number is configured.</p></div></div>
+      <div class="step"><div class="step-number">✓</div><div><p>New applications can be found in the Received Inbox.</p></div></div>
+    </div>
+
+    <div class="note">
+      <strong>Privacy reminder.</strong>
+      <p>Applicant names, email addresses, phone numbers and CV details are personal information. Keep the dashboard link and HOD contact list within the authorised HR team, and handle the information according to company policy.</p>
+    </div>
+
+    <div class="avoid-break">
+      <h3>In one sentence</h3>
+      <p><strong>Candidates email the vacancy address; EE-Mail sorts the message, replies to the candidate, saves the details, and alerts the right HOD by WhatsApp.</strong></p>
+      <p class="small">If a notification is missing, first check the department mapping and the <code>default</code> fallback.</p>
+    </div>
+
+    <div class="footer"><span>Dashboard: ee-mail-production.up.railway.app</span><span>EE-Mail</span></div>
+  </main>
+</body>
+</html>

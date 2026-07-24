@@ -55,7 +55,26 @@ function asSearchableText(email) {
 }
 
 export function extractEmailAddresses(value = '') {
-  return [...new Set((String(value).match(EMAIL_PATTERN) || []).map(email => email.toLowerCase()))];
+  if (value === null || value === undefined) return [];
+  const text = Array.isArray(value)
+    ? value.filter(Boolean).map(v => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(' ')
+    : (typeof value === 'object' ? JSON.stringify(value) : String(value));
+  return [...new Set((text.match(EMAIL_PATTERN) || []).map(email => email.trim().toLowerCase()))];
+}
+
+export function extractDomainFromEmail(emailInput) {
+  const emails = extractEmailAddresses(emailInput);
+  if (emails.length > 0) {
+    const parts = emails[0].split('@');
+    return parts[1] ? parts[1].toLowerCase() : null;
+  }
+  const str = Array.isArray(emailInput) ? emailInput[0] : String(emailInput || '');
+  const cleanStr = str.replace(/[<>"]/g, '').trim().toLowerCase();
+  const atIdx = cleanStr.lastIndexOf('@');
+  if (atIdx !== -1) {
+    return cleanStr.substring(atIdx + 1);
+  }
+  return cleanStr || null;
 }
 
 function isSedaAddress(email) {

@@ -55,6 +55,7 @@ import {
   getSedaTaskById,
   getSedaTaskStats,
 } from './seda-task-service.js';
+import { extractEmailAddresses, extractDomainFromEmail } from './seda-email-parser.js';
 import { fetchAttachments, downloadAttachment } from './resend-client.js';
 
 // Request body parser
@@ -174,7 +175,7 @@ const routes = {
       
       if (fromEmail) {
         // Extract domain from from_email
-        domain = fromEmail.split('@')[1];
+        domain = extractDomainFromEmail(fromEmail);
       } else if (domain && config.EMAIL_DOMAINS.includes(domain)) {
         // Use provided domain with default sender
         fromEmail = config.DEFAULT_SENDERS[domain];
@@ -281,8 +282,7 @@ const routes = {
           }, null, 2));
           
           // Extract domain from "to" email address for API key selection
-          const toEmail = Array.isArray(emailData.to) ? emailData.to[0] : emailData.to;
-          const domain = toEmail ? toEmail.split('@')[1] : null;
+          const domain = extractDomainFromEmail(emailData.to);
           
           // Save initial record (without html/text)
           const saved = await saveReceivedEmail({
@@ -316,10 +316,15 @@ const routes = {
                 const refreshedEmail = updatedEmail ||
                   await getReceivedEmailByEmailId(emailData.email_id);
                 if (refreshedEmail) {
-                  const recipients = String(refreshedEmail.to_email || '')
-                    .split(',')
-                    .map(value => value.trim().toLowerCase());
+                  const recipients = extractEmailAddresses([
+                    refreshedEmail.to_email,
+                    emailData.to,
+                    emailData.headers?.to,
+                    emailData.headers?.['x-original-to'],
+                    emailData.headers?.['delivered-to']
+                  ]);
                   const isVacancyEmail = recipients.includes('vacancy@eternalgy.me');
+                  const isPrEmail = recipients.includes('pr@eternalgy.me');
 
                   if (isVacancyEmail) {
                     try {
@@ -331,6 +336,33 @@ const routes = {
                       });
                     } catch (jobErr) {
                       console.error('❌ Job application processing failed:', jobErr.message);
+                    }
+                  }
+
+                  if (isPrEmail) {
+                    try {
+                      const prPayload = {
+                        email_id: refreshedEmail.email_id || refreshedEmail.id,
+                        from: refreshedEmail.from_email,
+                        subject: refreshedEmail.subject,
+                        to: recipients.filter(r => r.includes('pr@eternalgy.me')),
+                      };
+
+                      console.log('📢 Notifying PR service:', prPayload);
+                      const prResponse = await fetch('https://ee-pr-production.up.railway.app/webhook/email-received', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(prPayload),
+                      });
+
+                      if (prResponse.ok) {
+                        const prResult = await prResponse.json();
+                        console.log('✅ PR service notified:', prResult);
+                      } else {
+                        console.error('❌ PR service notification failed:', prResponse.status, await prResponse.text());
+                      }
+                    } catch (prErr) {
+                      console.error('❌ PR notification error:', prErr.message);
                     }
                   }
 

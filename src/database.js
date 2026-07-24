@@ -1,6 +1,7 @@
 // PostgreSQL Database Connection
 
 import pg from 'pg';
+import { extractDomainFromEmail } from './seda-email-parser.js';
 const { Pool } = pg;
 
 let pool = null;
@@ -365,7 +366,7 @@ export async function saveEmail(data) {
 
   // Extract domain from from_email if not provided
   const fromEmail = from || '';
-  const emailDomain = domain || fromEmail.split('@')[1] || 'eternalgy.me';
+  const emailDomain = domain || extractDomainFromEmail(fromEmail) || 'eternalgy.me';
 
   const result = await pool.query(
     `INSERT INTO emails 
@@ -547,8 +548,8 @@ export async function saveReceivedEmail(data) {
   } = data;
 
   // Extract domain from to_email if not provided
-  const toEmail = Array.isArray(to) ? to[0] : to;
-  const emailDomain = domain || (toEmail && toEmail.split('@')[1]) || 'eternalgy.me';
+  const toEmail = Array.isArray(to) ? to.join(', ') : (to || '');
+  const emailDomain = domain || extractDomainFromEmail(toEmail) || 'eternalgy.me';
 
   const result = await pool.query(
     `INSERT INTO received_emails 

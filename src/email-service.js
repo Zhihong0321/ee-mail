@@ -1,6 +1,7 @@
 // Resend Email Service
 
 import config, { getApiKeyForDomain } from './config.js';
+import { extractDomainFromEmail } from './seda-email-parser.js';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 
@@ -33,7 +34,7 @@ export async function sendEmail(options) {
   };
 
   // Determine which API key to use based on domain or from email
-  const fromDomain = domain || (from && from.split('@')[1]);
+  const fromDomain = domain || extractDomainFromEmail(from);
   const apiKey = await getApiKeyForDomain(fromDomain);
 
   if (!apiKey) {
