@@ -19,7 +19,7 @@ test('serves the HOD WhatsApp settings page', async () => {
   }
 });
 
-test('exposes recruitment endpoints in API documentation', async () => {
+test('exposes recruitment and AI health endpoints in API documentation', async () => {
   const server = createServer();
   await new Promise(resolve => server.listen(0, resolve));
 
@@ -31,6 +31,28 @@ test('exposes recruitment endpoints in API documentation', async () => {
     assert.equal(response.status, 200);
     assert.ok(payload.endpoints.some(endpoint => endpoint.path === '/job-applications'));
     assert.ok(payload.endpoints.some(endpoint => endpoint.path === '/hod-departments'));
+    assert.ok(payload.endpoints.some(endpoint => endpoint.path === '/health/ai'));
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('returns a structured AI health response when provider config is unavailable', async () => {
+  const server = createServer();
+  await new Promise(resolve => server.listen(0, resolve));
+
+  try {
+    const address = server.address();
+    const response = await fetch(`http://127.0.0.1:${address.port}/health/ai`);
+    const payload = await response.json();
+
+    assert.ok([200, 503, 504].includes(response.status));
+    assert.equal(payload.service, 'ai');
+    assert.ok(['ok', 'error'].includes(payload.status));
+    if (response.status !== 200) {
+      assert.equal(typeof payload.code, 'string');
+      assert.equal(typeof payload.error, 'string');
+    }
   } finally {
     await new Promise(resolve => server.close(resolve));
   }

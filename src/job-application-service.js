@@ -14,6 +14,7 @@ const CLASSIFICATIONS = new Set([
   'uncertain',
   'not_job_application',
 ]);
+const AI_REQUEST_TIMEOUT_MS = 15000;
 
 function stripHtml(value) {
   return String(value || '')
@@ -88,46 +89,103 @@ Body:
 ${body.slice(0, 30000)}`;
 }
 
-async function classifyAndExtract(email) {
-  const { AI_API_KEY: apiKey, AI_API_BASE_URL: apiBaseUrl, AI_MODEL: model } = config;
+function getAiConfig() {
+  const values = {
+    apiKey: config.AI_API_KEY,
+    apiBaseUrl: config.AI_API_BASE_URL,
+    model: config.AI_MODEL,
+  };
   const missingConfig = [
-    ['AI_API_KEY', apiKey],
-    ['AI_API_BASE_URL', apiBaseUrl],
-    ['AI_MODEL', model],
+    ['AI_API_KEY', values.apiKey],
+    ['AI_API_BASE_URL', values.apiBaseUrl],
+    ['AI_MODEL', values.model],
   ]
     .filter(([, value]) => !value)
     .map(([name]) => name);
   if (missingConfig.length > 0) {
-    throw new Error(`${missingConfig.join(', ')} must be configured`);
-  }
-
-  const hodDepartments = await getHodDepartments();
-  const response = await fetch(`${apiBaseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: 'You extract recruitment emails into conservative structured JSON.',
-        },
-        { role: 'user', content: applicationPrompt(email, hodDepartments) },
-      ],
-    }),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(data.error?.message || data.message || `AI API error: ${response.status}`);
-    error.status = response.status;
+    const error = new Error(`${missingConfig.join(', ')} must be configured`);
+    error.code = 'AI_CONFIG_MISSING';
+    error.status = 503;
     throw error;
   }
+  return values;
+}
+
+async function callAiApi(body) {
+  const { apiKey, apiBaseUrl } = getAiConfig();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${apiBaseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(data.error?.message || data.message || `AI API error: ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    return data;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      const error = new Error(`AI API timed out after ${AI_REQUEST_TIMEOUT_MS}ms`);
+      error.code = 'AI_TIMEOUT';
+      error.status = 504;
+      throw error;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function checkAiHealth() {
+  const startedAt = Date.now();
+  const { model } = getAiConfig();
+  const data = await callAiApi({
+    model,
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: 'You are an AI health probe. Return JSON only: {"ok":true}.',
+      },
+      { role: 'user', content: 'Health check. Return {"ok":true}.' },
+    ],
+  });
+  const content = data.choices?.[0]?.message?.content;
+  const parsed = parseJsonObject(content);
+  if (parsed.ok !== true) {
+    const error = new Error('AI API returned an invalid health response');
+    error.code = 'AI_INVALID_RESPONSE';
+    error.status = 502;
+    throw error;
+  }
+  return { ok: true, model, latencyMs: Date.now() - startedAt };
+}
+
+async function classifyAndExtract(email) {
+  const { model } = getAiConfig();
+  const hodDepartments = await getHodDepartments();
+  const data = await callAiApi({
+    model,
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: 'You extract recruitment emails into conservative structured JSON.',
+      },
+      { role: 'user', content: applicationPrompt(email, hodDepartments) },
+    ],
+  });
 
   const content = data.choices?.[0]?.message?.content;
   const parsed = parseJsonObject(content);

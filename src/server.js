@@ -45,7 +45,7 @@ import {
   deleteAgentEmailAccount
 } from './database.js';
 import { getReceivedEmailWithRetry } from './resend-client.js';
-import { processJobApplicationEmail } from './job-application-service.js';
+import { checkAiHealth, processJobApplicationEmail } from './job-application-service.js';
 import {
   enqueueSedaTaskForReceivedEmail,
   enqueueSedaTaskForReceivedEmailId,
@@ -129,6 +129,27 @@ const routes = {
       env: config.NODE_ENV,
       version: process.env.npm_package_version || '1.0.0',
     });
+  },
+
+  // AI provider readiness and smoke test
+  'GET /health/ai': async (req, res) => {
+    try {
+      const data = await checkAiHealth();
+      json(res, 200, {
+        status: 'ok',
+        service: 'ai',
+        timestamp: new Date().toISOString(),
+        ...data,
+      });
+    } catch (err) {
+      json(res, err.status || 503, {
+        status: 'error',
+        service: 'ai',
+        code: err.code || 'AI_HEALTH_FAILED',
+        error: err.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
   },
 
   // Send email
@@ -1197,7 +1218,8 @@ const routes = {
         { method: 'POST', path: '/seda-tasks/from-received-email/:id', description: 'Create a protected PENDING task from an existing received email' },
         { method: 'POST', path: '/seda-tasks/:id/retry', description: 'Make a protected SEDA task retryable' },
         { method: 'POST', path: '/seda-tasks/scan', description: 'Scan received emails since N days ago and create PENDING tasks for any matches (public, body: { days, domain, limit })' },
-        { method: 'GET', path: '/health', description: 'Health check' },
+        { method: 'GET', path: '/health', description: 'Application liveness check' },
+        { method: 'GET', path: '/health/ai', description: 'AI provider readiness and live smoke test' },
         { method: 'GET', path: '/stats', description: 'Email statistics (sent)' },
         { method: 'GET', path: '/emails', description: 'List sent emails with optional domain and search filters' },
         { method: 'GET', path: '/emails/:id', description: 'View a single sent email by ID (database ID or Resend ID)' },
