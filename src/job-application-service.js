@@ -7,6 +7,7 @@ import {
   saveJobApplication,
   updateJobApplication,
   savePipelineEvent,
+  saveAiActivityLog,
 } from './database.js';
 import { sendWhatsAppMessage } from './whatsapp-client.js';
 
@@ -33,6 +34,82 @@ async function logPipelineEvent(eventName, details = {}) {
     await savePipelineEvent({ eventName, ...details });
   } catch (err) {
     console.error('Pipeline event logging failed:', err.message);
+  }
+}
+
+function truncateForLog(value, maxLength = 500) {
+  return String(value || '').slice(0, maxLength);
+}
+
+function sanitizeErrorForLog(value) {
+  return truncateForLog(value)
+    .replace(/(bearer\s+|api[_-]?key\s*[:=]\s*)\S+/gi, '$1[redacted]');
+}
+
+function summarizeAiRequest(body, requestChars) {
+  const messageCount = Array.isArray(body?.messages) ? body.messages.length : 0;
+  return `Chat completion request with ${messageCount} message(s), ${requestChars} serialized characters.`;
+}
+
+function summarizeAiResponse(data) {
+  const choices = Array.isArray(data?.choices) ? data.choices.length : 0;
+  const contentChars = (data?.choices || []).reduce((total, choice) => {
+    const content = choice?.message?.content;
+    return total + (typeof content === 'string' ? content.length : 0);
+  }, 0);
+  return `Chat completion response with ${choices} choice(s), ${contentChars} content characters.`;
+}
+
+function getAiUsage(data) {
+  const usage = data?.usage || {};
+  const inputTokens = usage.prompt_tokens ?? usage.input_tokens ?? null;
+  const outputTokens = usage.completion_tokens ?? usage.output_tokens ?? null;
+  return {
+    inputTokens: Number.isInteger(inputTokens) ? inputTokens : null,
+    outputTokens: Number.isInteger(outputTokens) ? outputTokens : null,
+  };
+}
+
+async function logAiActivity({
+  emailId,
+  model,
+  apiUrl,
+  action = 'llm_request',
+  description,
+  inputSummary,
+  outputSummary,
+  inputTokens = null,
+  outputTokens = null,
+  durationMs,
+  status = 'success',
+  errorMessage = null,
+  metadata = {},
+} = {}) {
+  try {
+    await saveAiActivityLog({
+      app: config.APP_SLUG,
+      appEnv: config.NODE_ENV,
+      agent: config.AI_AGENT,
+      agentKind: 'workflow',
+      model,
+      apiUrl,
+      taskId: emailId ? String(emailId) : null,
+      action,
+      toolName: 'chat.completions',
+      entityType: emailId ? 'received_email' : null,
+      entityId: emailId ? String(emailId) : null,
+      description,
+      inputSummary: truncateForLog(inputSummary),
+      outputSummary: truncateForLog(outputSummary),
+      inputTokens,
+      outputTokens,
+      durationMs,
+      status,
+      errorMessage: errorMessage ? sanitizeErrorForLog(errorMessage) : null,
+      metadata: { ...metadata, emailId: emailId || null },
+    });
+  } catch (err) {
+    console.error('AI activity logging failed:', err.message);
   }
 }
 
@@ -246,6 +323,8 @@ export async function callAiApi(body, { emailId = null } = {}) {
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+    let responseStatus = null;
+    let data = null;
     try {
       const response = await fetch(`${apiBaseUrl}/chat/completions`, {
         method: 'POST',
@@ -256,15 +335,36 @@ export async function callAiApi(body, { emailId = null } = {}) {
         body: requestBody,
         signal: controller.signal,
       });
-      const data = await response.json().catch(() => ({}));
+      responseStatus = response.status;
+      data = await response.json().catch(() => ({}));
       if (!response.ok) {
         const error = new Error(data.error?.message || data.message || `AI API error: ${response.status}`);
         error.status = response.status;
         throw error;
       }
+      const usage = getAiUsage(data);
+      const durationMs = Date.now() - startedAt;
+      await logAiActivity({
+        emailId,
+        model,
+        apiUrl: `${apiBaseUrl}/chat/completions`,
+        description: 'EE-Mail recruitment workflow completed an LLM request',
+        inputSummary: summarizeAiRequest(body, requestBody.length),
+        outputSummary: summarizeAiResponse(data),
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        durationMs,
+        metadata: {
+          attempt,
+          maxAttempts: AI_MAX_ATTEMPTS,
+          httpStatus: responseStatus,
+          requestChars: requestBody.length,
+          responseChars: JSON.stringify(data).length,
+        },
+      });
       await logPipelineEvent('ai.request.completed', {
         emailId,
-        metadata: { attempt, status: response.status, latencyMs: Date.now() - startedAt, model },
+        metadata: { attempt, status: responseStatus, latencyMs: durationMs, model },
       });
       return data;
     } catch (err) {
@@ -276,6 +376,32 @@ export async function callAiApi(body, { emailId = null } = {}) {
         : err;
       lastError = error;
       const retryable = isRetryableAiError(error);
+      const durationMs = Date.now() - startedAt;
+      const usage = getAiUsage(data);
+      await logAiActivity({
+        emailId,
+        model,
+        apiUrl: `${apiBaseUrl}/chat/completions`,
+        description: 'EE-Mail recruitment workflow attempted an LLM request',
+        inputSummary: summarizeAiRequest(body, requestBody.length),
+        outputSummary: data
+          ? summarizeAiResponse(data)
+          : 'No response payload was available.',
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        durationMs,
+        status: 'failed',
+        errorMessage: error.message,
+        metadata: {
+          attempt,
+          maxAttempts: AI_MAX_ATTEMPTS,
+          httpStatus: responseStatus,
+          requestChars: requestBody.length,
+          responseChars: data ? JSON.stringify(data).length : 0,
+          retryable,
+          code: error.code || null,
+        },
+      });
       await logPipelineEvent(error.code === 'AI_TIMEOUT' ? 'ai.request.timeout' : 'ai.request.failed', {
         level: 'error',
         emailId,

@@ -194,6 +194,53 @@ export async function initTables() {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_activity_log (
+        id BIGSERIAL PRIMARY KEY,
+        app TEXT NOT NULL,
+        app_env TEXT,
+        agent TEXT NOT NULL,
+        agent_kind TEXT NOT NULL DEFAULT 'workflow',
+        model TEXT NOT NULL,
+        api_url TEXT,
+        session_id TEXT,
+        task_id TEXT,
+        parent_task_id TEXT,
+        triggered_by_user_id INTEGER,
+        triggered_by_ref TEXT,
+        triggered_by_name TEXT,
+        action TEXT NOT NULL,
+        tool_name TEXT,
+        entity_type TEXT,
+        entity_id TEXT,
+        entity_label TEXT,
+        description TEXT,
+        input_summary TEXT,
+        output_summary TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        cost_usd NUMERIC(10,4),
+        duration_ms INTEGER,
+        status TEXT NOT NULL DEFAULT 'success',
+        error_message TEXT,
+        activity_log_id BIGINT,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        retain_until TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ai_activity_log_occurred_at
+        ON ai_activity_log(occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ai_activity_log_app_occurred_at
+        ON ai_activity_log(app, occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ai_activity_log_session_occurred_at
+        ON ai_activity_log(session_id, occurred_at);
+      CREATE INDEX IF NOT EXISTS idx_ai_activity_log_agent_occurred_at
+        ON ai_activity_log(agent, occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ai_activity_log_task_id
+        ON ai_activity_log(task_id);
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS api_keys (
         id SERIAL PRIMARY KEY,
         domain VARCHAR(255) NOT NULL UNIQUE,
@@ -445,6 +492,88 @@ export async function savePipelineEvent({
      VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
     [eventName, level, emailId, receivedEmailId, applicationId, message, JSON.stringify(metadata || {})]
+  );
+
+  return result.rows[0];
+}
+
+/**
+ * Save a detailed AI operation record. Callers should wrap this in their own
+ * try/catch so observability failures never break the business operation.
+ */
+export async function saveAiActivityLog({
+  app,
+  appEnv = process.env.NODE_ENV || null,
+  agent,
+  agentKind = 'workflow',
+  model,
+  apiUrl = null,
+  sessionId = null,
+  taskId = null,
+  parentTaskId = null,
+  triggeredByUserId = null,
+  triggeredByRef = null,
+  triggeredByName = null,
+  action,
+  toolName = null,
+  entityType = null,
+  entityId = null,
+  entityLabel = null,
+  description = null,
+  inputSummary = null,
+  outputSummary = null,
+  inputTokens = null,
+  outputTokens = null,
+  costUsd = null,
+  durationMs = null,
+  status = 'success',
+  errorMessage = null,
+  activityLogId = null,
+  metadata = {},
+} = {}) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `INSERT INTO ai_activity_log
+      (app, app_env, agent, agent_kind, model, api_url, session_id, task_id,
+       parent_task_id, triggered_by_user_id, triggered_by_ref, triggered_by_name,
+       action, tool_name, entity_type, entity_id, entity_label, description,
+       input_summary, output_summary, input_tokens, output_tokens, cost_usd,
+       duration_ms, status, error_message, activity_log_id, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+             $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
+             $27, $28)
+     RETURNING *`,
+    [
+      app,
+      appEnv,
+      agent,
+      agentKind,
+      model,
+      apiUrl,
+      sessionId,
+      taskId,
+      parentTaskId,
+      triggeredByUserId,
+      triggeredByRef,
+      triggeredByName,
+      action,
+      toolName,
+      entityType,
+      entityId,
+      entityLabel,
+      description,
+      inputSummary,
+      outputSummary,
+      inputTokens,
+      outputTokens,
+      costUsd,
+      durationMs,
+      status,
+      errorMessage,
+      activityLogId,
+      JSON.stringify(metadata || {}),
+    ]
   );
 
   return result.rows[0];

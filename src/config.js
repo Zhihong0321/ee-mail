@@ -79,6 +79,10 @@ const DEFAULT_SENDERS = parseDefaultSenders(EMAIL_DOMAINS);
 const ENV_API_KEYS = parseApiKeysFromEnv(EMAIL_DOMAINS);
 
 const config = {
+  // Shared AI activity-log identity
+  APP_SLUG: process.env.APP_SLUG?.trim() || 'ee-mail',
+  AI_AGENT: process.env.AI_AGENT?.trim() || 'ee-mail-recruitment',
+
   // Server
   PORT: process.env.PORT || 3000,
   NODE_ENV: process.env.NODE_ENV || 'development',
