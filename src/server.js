@@ -28,6 +28,8 @@ import {
   getReceivedEmailById,
   getReceivedEmailByEmailId,
   getJobApplications,
+  getPipelineEvents,
+  savePipelineEvent,
   getHodDepartments,
   saveHodDepartment,
   deleteHodDepartment,
@@ -129,6 +131,20 @@ const routes = {
       env: config.NODE_ENV,
       version: process.env.npm_package_version || '1.0.0',
     });
+  },
+
+  // Pipeline event inspection
+  'GET /pipeline-events': async (req, res) => {
+    try {
+      const events = await getPipelineEvents({
+        emailId: req.query?.email_id || null,
+        receivedEmailId: req.query?.received_email_id || null,
+        limit: req.query?.limit,
+      });
+      json(res, 200, { success: true, data: events });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
   },
 
   // AI provider readiness and smoke test
@@ -260,7 +276,11 @@ const routes = {
   'POST /webhook': async (req, res) => {
     try {
       const body = await parseBody(req);
-      
+      await savePipelineEvent({
+        eventName: 'webhook.received',
+        emailId: body.data?.email_id || null,
+        metadata: { type: body.type || null },
+      });
       console.log(`📨 Webhook received: ${body.type}`, JSON.stringify(body, null, 2));
       
       // Save webhook to database
@@ -319,12 +339,27 @@ const routes = {
             headers: emailData.headers,
             rawData: emailData,
           });
+          await savePipelineEvent({
+            eventName: 'email.received.persisted',
+            emailId: emailData.email_id,
+            receivedEmailId: saved?.id || null,
+            metadata: {
+              from: emailData.from || null,
+              to: emailData.to || null,
+              subject: emailData.subject || null,
+            },
+          });
           console.log('✅ Inbound email saved, id:', saved?.id);
           
           // Fetch full email content from Resend API (async, don't block response)
           if (emailData.email_id) {
             setTimeout(async () => {
               try {
+                await savePipelineEvent({
+                  eventName: 'email.content.fetch.started',
+                  emailId: emailData.email_id,
+                  receivedEmailId: saved?.id || null,
+                });
                 console.log(`🔄 Fetching email content for ${emailData.email_id}...`);
                 const fullEmail = await getReceivedEmailWithRetry(emailData.email_id, domain);
                 
@@ -336,6 +371,12 @@ const routes = {
 
                 const refreshedEmail = updatedEmail ||
                   await getReceivedEmailByEmailId(emailData.email_id);
+                await savePipelineEvent({
+                  eventName: 'email.content.fetch.completed',
+                  emailId: emailData.email_id,
+                  receivedEmailId: refreshedEmail?.id || saved?.id || null,
+                  metadata: { hasHtml: !!fullEmail.html, hasText: !!fullEmail.text },
+                });
                 if (refreshedEmail) {
                   const recipients = extractEmailAddresses([
                     refreshedEmail.to_email,
@@ -356,6 +397,14 @@ const routes = {
                         status: applicationResult?.status,
                       });
                     } catch (jobErr) {
+                      await savePipelineEvent({
+                        eventName: 'application.processing.failed.webhook',
+                        level: 'error',
+                        emailId: emailData.email_id,
+                        receivedEmailId: refreshedEmail.id,
+                        message: jobErr.message,
+                        metadata: { code: jobErr.code || null, status: jobErr.status || null },
+                      });
                       console.error('❌ Job application processing failed:', jobErr.message);
                     }
                   }
@@ -395,6 +444,14 @@ const routes = {
                 
                 console.log('✅ Email content updated');
               } catch (err) {
+                await savePipelineEvent({
+                  eventName: 'email.content.fetch.failed',
+                  level: 'error',
+                  emailId: emailData.email_id,
+                  receivedEmailId: saved?.id || null,
+                  message: err.message,
+                  metadata: { code: err.code || null, status: err.status || null },
+                });
                 console.error('❌ Failed to fetch email content:', err.message);
               }
             }, 100);
@@ -1220,6 +1277,7 @@ const routes = {
         { method: 'POST', path: '/seda-tasks/scan', description: 'Scan received emails since N days ago and create PENDING tasks for any matches (public, body: { days, domain, limit })' },
         { method: 'GET', path: '/health', description: 'Application liveness check' },
         { method: 'GET', path: '/health/ai', description: 'AI provider readiness and live smoke test' },
+        { method: 'GET', path: '/pipeline-events?email_id=&received_email_id=&limit=', description: 'Inspect structured recruitment pipeline events' },
         { method: 'GET', path: '/stats', description: 'Email statistics (sent)' },
         { method: 'GET', path: '/emails', description: 'List sent emails with optional domain and search filters' },
         { method: 'GET', path: '/emails/:id', description: 'View a single sent email by ID (database ID or Resend ID)' },

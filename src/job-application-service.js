@@ -6,6 +6,7 @@ import {
   getJobApplicationByReceivedEmailId,
   saveJobApplication,
   updateJobApplication,
+  savePipelineEvent,
 } from './database.js';
 import { sendWhatsAppMessage } from './whatsapp-client.js';
 
@@ -15,6 +16,14 @@ const CLASSIFICATIONS = new Set([
   'not_job_application',
 ]);
 const AI_REQUEST_TIMEOUT_MS = 15000;
+
+async function logPipelineEvent(eventName, details = {}) {
+  try {
+    await savePipelineEvent({ eventName, ...details });
+  } catch (err) {
+    console.error('Pipeline event logging failed:', err.message);
+  }
+}
 
 function stripHtml(value) {
   return String(value || '')
@@ -111,8 +120,13 @@ function getAiConfig() {
   return values;
 }
 
-async function callAiApi(body) {
-  const { apiKey, apiBaseUrl } = getAiConfig();
+async function callAiApi(body, { emailId = null } = {}) {
+  const startedAt = Date.now();
+  const { apiKey, apiBaseUrl, model } = getAiConfig();
+  await logPipelineEvent('ai.request.started', {
+    emailId,
+    metadata: { model, timeoutMs: AI_REQUEST_TIMEOUT_MS },
+  });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
   try {
@@ -129,16 +143,38 @@ async function callAiApi(body) {
     if (!response.ok) {
       const error = new Error(data.error?.message || data.message || `AI API error: ${response.status}`);
       error.status = response.status;
+      await logPipelineEvent('ai.request.failed', {
+        level: 'error',
+        emailId,
+        metadata: { status: response.status, latencyMs: Date.now() - startedAt, model },
+        message: error.message,
+      });
       throw error;
     }
+    await logPipelineEvent('ai.request.completed', {
+      emailId,
+      metadata: { status: response.status, latencyMs: Date.now() - startedAt, model },
+    });
     return data;
   } catch (err) {
     if (err.name === 'AbortError') {
       const error = new Error(`AI API timed out after ${AI_REQUEST_TIMEOUT_MS}ms`);
       error.code = 'AI_TIMEOUT';
       error.status = 504;
+      await logPipelineEvent('ai.request.timeout', {
+        level: 'error',
+        emailId,
+        metadata: { latencyMs: Date.now() - startedAt, model },
+        message: error.message,
+      });
       throw error;
     }
+    await logPipelineEvent('ai.request.failed', {
+      level: 'error',
+      emailId,
+      metadata: { latencyMs: Date.now() - startedAt, model, code: err.code || null },
+      message: err.message,
+    });
     throw err;
   } finally {
     clearTimeout(timeout);
@@ -185,7 +221,7 @@ async function classifyAndExtract(email) {
       },
       { role: 'user', content: applicationPrompt(email, hodDepartments) },
     ],
-  });
+  }, { emailId: email.email_id || null });
 
   const content = data.choices?.[0]?.message?.content;
   const parsed = parseJsonObject(content);
@@ -244,16 +280,34 @@ function hodMessage({ application, email }) {
 }
 
 export async function processJobApplicationEmail(email) {
+  const context = { emailId: email?.email_id || null, receivedEmailId: email?.id || null };
+  await logPipelineEvent('application.processing.started', context);
   if (!email?.id || !email.from_email) {
     throw new Error('Received email record is incomplete');
   }
 
   const existing = await getJobApplicationByReceivedEmailId(email.id);
   if (existing?.processing_status === 'completed') {
+    await logPipelineEvent('application.processing.skipped', {
+      ...context,
+      applicationId: existing.id,
+      metadata: { reason: 'already_completed', status: existing.status },
+    });
     return { skipped: true, application: existing };
   }
 
-  const extracted = await classifyAndExtract(email);
+  let extracted;
+  try {
+    extracted = await classifyAndExtract({ ...email, emailId: email.email_id });
+  } catch (err) {
+    await logPipelineEvent('application.processing.failed', {
+      ...context,
+      level: 'error',
+      metadata: { code: err.code || null, status: err.status || null },
+      message: err.message,
+    });
+    throw err;
+  }
   const applicant = extracted.applicant || {};
   const application = await saveJobApplication({
     receivedEmailId: email.id,
@@ -274,6 +328,16 @@ export async function processJobApplicationEmail(email) {
     processingStatus: 'processing',
   });
 
+  await logPipelineEvent('application.classified', {
+    ...context,
+    applicationId: application?.id,
+    metadata: {
+      classification: extracted.classification,
+      confidence: extracted.confidence,
+      department: applicant.department || null,
+    },
+  });
+
   if (extracted.classification === 'not_job_application') {
     return updateJobApplication(application.id, {
       processingStatus: 'completed',
@@ -282,7 +346,13 @@ export async function processJobApplicationEmail(email) {
   }
 
   const uncertain = extracted.classification === 'uncertain';
-  await sendEmail({
+  await logPipelineEvent('candidate.reply.started', {
+    ...context,
+    applicationId: application?.id,
+    metadata: { classification: extracted.classification, uncertain },
+  });
+  try {
+    await sendEmail({
     to: email.from_email,
     from: config.JOB_APPLICATION_FROM,
     domain: config.EMAIL_DOMAIN,
@@ -291,7 +361,21 @@ export async function processJobApplicationEmail(email) {
       : `Re: ${email.subject || 'Your job application to Eternalgy'}`,
     text: candidateReply({ applicant, uncertain }),
     html: `<pre style="font-family: Arial, sans-serif; white-space: pre-wrap;">${candidateReply({ applicant, uncertain })}</pre>`,
-  });
+    });
+    await logPipelineEvent('candidate.reply.sent', {
+      ...context,
+      applicationId: application?.id,
+      metadata: { uncertain },
+    });
+  } catch (err) {
+    await logPipelineEvent('candidate.reply.failed', {
+      ...context,
+      applicationId: application?.id,
+      level: 'error',
+      message: err.message,
+    });
+    throw err;
+  }
 
   if (uncertain) {
     return updateJobApplication(application.id, {

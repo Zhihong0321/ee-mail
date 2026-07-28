@@ -37,6 +37,23 @@ test('exposes recruitment and AI health endpoints in API documentation', async (
   }
 });
 
+test('exposes queryable pipeline events without leaking request bodies', async () => {
+  const server = createServer();
+  await new Promise(resolve => server.listen(0, resolve));
+
+  try {
+    const address = server.address();
+    const response = await fetch(`http://127.0.0.1:${address.port}/pipeline-events?email_id=test-email&limit=10`);
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.success, true);
+    assert.ok(Array.isArray(payload.data));
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
 test('returns a structured AI health response when provider config is unavailable', async () => {
   const server = createServer();
   await new Promise(resolve => server.listen(0, resolve));

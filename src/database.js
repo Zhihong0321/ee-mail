@@ -175,6 +175,25 @@ export async function initTables() {
 
     // Create api_keys table for domain-specific API key management
     await client.query(`
+      CREATE TABLE IF NOT EXISTS pipeline_events (
+        id BIGSERIAL PRIMARY KEY,
+        event_name VARCHAR(100) NOT NULL,
+        level VARCHAR(20) NOT NULL DEFAULT 'info',
+        email_id VARCHAR(255),
+        received_email_id INTEGER,
+        application_id INTEGER,
+        message TEXT,
+        metadata JSONB NOT NULL DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_pipeline_events_email_id ON pipeline_events(email_id);
+      CREATE INDEX IF NOT EXISTS idx_pipeline_events_received_email_id ON pipeline_events(received_email_id);
+      CREATE INDEX IF NOT EXISTS idx_pipeline_events_created_at ON pipeline_events(created_at);
+      CREATE INDEX IF NOT EXISTS idx_pipeline_events_event_name ON pipeline_events(event_name);
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS api_keys (
         id SERIAL PRIMARY KEY,
         domain VARCHAR(255) NOT NULL UNIQUE,
@@ -404,6 +423,58 @@ export async function saveWebhook(event) {
   );
 
   return result.rows[0];
+}
+
+/**
+ * Update email status from webhook
+ */
+export async function savePipelineEvent({
+  eventName,
+  level = 'info',
+  emailId = null,
+  receivedEmailId = null,
+  applicationId = null,
+  message = null,
+  metadata = {},
+} = {}) {
+  if (!pool) return null;
+
+  const result = await pool.query(
+    `INSERT INTO pipeline_events
+      (event_name, level, email_id, received_email_id, application_id, message, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING *`,
+    [eventName, level, emailId, receivedEmailId, applicationId, message, JSON.stringify(metadata || {})]
+  );
+
+  return result.rows[0];
+}
+
+export async function getPipelineEvents({ emailId = null, receivedEmailId = null, limit = 100 } = {}) {
+  if (!pool) return [];
+
+  const conditions = [];
+  const values = [];
+  if (emailId) {
+    values.push(emailId);
+    conditions.push(`email_id = $${values.length}`);
+  }
+  if (receivedEmailId) {
+    values.push(receivedEmailId);
+    conditions.push(`received_email_id = $${values.length}`);
+  }
+  values.push(Math.min(Math.max(Number(limit) || 100, 1), 500));
+
+  const result = await pool.query(
+    `SELECT id, event_name, level, email_id, received_email_id, application_id,
+            message, metadata, created_at
+       FROM pipeline_events
+      ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+      ORDER BY created_at ASC, id ASC
+      LIMIT $${values.length}`,
+    values
+  );
+  return result.rows;
 }
 
 /**
