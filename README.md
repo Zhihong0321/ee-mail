@@ -36,6 +36,7 @@ Email service using Resend API with the `@eternalgy.me` domain. Deployed on Rail
 | `AI_API_KEY` | Required for recruitment | API key for the OpenAI-compatible AI provider; store as a Railway secret |
 | `AI_API_BASE_URL` | Required for recruitment | OpenAI-compatible API root, without `/chat/completions` |
 | `AI_MODEL` | Required for recruitment | Model identifier sent to the AI provider |
+| `AI_REQUEST_TIMEOUT_MS` | No | AI request timeout in milliseconds (default: 60000) |
 
 Set `AI_API_KEY`, `AI_API_BASE_URL`, and `AI_MODEL` in Railway under **Service > Variables**. Railway applies changes after the service redeploys.
 

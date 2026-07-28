@@ -15,7 +15,7 @@ const CLASSIFICATIONS = new Set([
   'uncertain',
   'not_job_application',
 ]);
-const AI_REQUEST_TIMEOUT_MS = 15000;
+const AI_REQUEST_TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT_MS || 60000);
 
 async function logPipelineEvent(eventName, details = {}) {
   try {
@@ -125,7 +125,11 @@ async function callAiApi(body, { emailId = null } = {}) {
   const { apiKey, apiBaseUrl, model } = getAiConfig();
   await logPipelineEvent('ai.request.started', {
     emailId,
-    metadata: { model, timeoutMs: AI_REQUEST_TIMEOUT_MS },
+    metadata: {
+      model,
+      timeoutMs: AI_REQUEST_TIMEOUT_MS,
+      requestChars: JSON.stringify(body).length,
+    },
   });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
