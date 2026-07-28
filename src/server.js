@@ -780,13 +780,27 @@ const routes = {
       const taskResult = refreshedEmail
         ? await enqueueSedaTaskForReceivedEmail(refreshedEmail)
         : { matched: false };
+      let applicationResult = null;
+
+      if (refreshedEmail) {
+        const recipients = extractEmailAddresses([
+          refreshedEmail.to_email,
+          refreshedEmail.headers?.to,
+          refreshedEmail.headers?.['x-original-to'],
+          refreshedEmail.headers?.['delivered-to'],
+        ]);
+        if (recipients.includes('vacancy@eternalgy.me')) {
+          applicationResult = await processJobApplicationEmail(refreshedEmail);
+        }
+      }
 
       json(res, 200, {
-        success: true, 
+        success: true,
         message: 'Email content updated',
         data: {
           hasHtml: !!fullEmail.html,
           hasText: !!fullEmail.text,
+          application: applicationResult,
           sedaTask: taskResult.matched
             ? { created: taskResult.created, task: taskResult.task }
             : null,
@@ -1192,7 +1206,7 @@ const routes = {
         { method: 'POST', path: '/send', description: 'Send email with optional attachments (10MB limit)' },
         { method: 'POST', path: '/send-batch', description: 'Send batch emails' },
         { method: 'POST', path: '/webhook', description: 'Receive webhooks & inbound emails' },
-        { method: 'POST', path: '/received-emails/fetch', description: 'Manually re-fetch email content from Resend API' },
+        { method: 'POST', path: '/received-emails/fetch', description: 'Re-fetch email content and retry vacancy processing from Resend' },
         { method: 'GET', path: '/domains', description: 'List all known domains (configured + seen in emails)' },
         { method: 'GET', path: '/stats/domains', description: 'Get stats grouped by domain' },
         { method: 'GET', path: '/received-emails/:id/attachments', description: 'Get email attachments list' },
