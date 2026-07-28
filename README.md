@@ -33,6 +33,11 @@ Email service using Resend API with the `@eternalgy.me` domain. Deployed on Rail
 | `SEDA_STATUS_API_URL` | No | SEDA status endpoint (defaults to the production endpoint) |
 | `SEDA_STATUS_DRY_RUN` | No | Defaults to `false`; use `true` only for safe matching tests |
 | `SEDA_TASK_WORKER_INTERVAL_MS` | No | Worker polling interval (default: 5000 ms) |
+| `AI_API_KEY` | Required for recruitment | API key for the OpenAI-compatible AI provider; store as a Railway secret |
+| `AI_API_BASE_URL` | Required for recruitment | OpenAI-compatible API root, without `/chat/completions` |
+| `AI_MODEL` | Required for recruitment | Model identifier sent to the AI provider |
+
+Set `AI_API_KEY`, `AI_API_BASE_URL`, and `AI_MODEL` in Railway under **Service > Variables**. Railway applies changes after the service redeploys.
 
 ## API Endpoints
 

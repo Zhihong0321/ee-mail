@@ -113,9 +113,9 @@ const config = {
 
   // Recruitment automation
   JOB_APPLICATION_FROM: process.env.JOB_APPLICATION_FROM || 'vacancy@eternalgy.me',
-  MIMO_API_KEY: process.env.MIMO_API_KEY,
-  MIMO_API_BASE_URL: process.env.MIMO_API_BASE_URL || 'https://token-plan-sgp.xiaomimimo.com/v1',
-  MIMO_MODEL: process.env.MIMO_MODEL || 'mimo-v2.5-pro',
+  AI_API_KEY: process.env.AI_API_KEY?.trim(),
+  AI_API_BASE_URL: process.env.AI_API_BASE_URL?.trim().replace(/\/+$/, ''),
+  AI_MODEL: process.env.AI_MODEL?.trim(),
   WHATSAPP_API_URL: process.env.WHATSAPP_API_URL || 'https://ee-baileys-production.up.railway.app',
   WHATSAPP_SESSION_ID: process.env.WHATSAPP_SESSION_ID || 'eternalgy-auth',
   WHATSAPP_API_KEY: process.env.WHATSAPP_API_KEY,
@@ -135,8 +135,10 @@ export function validateConfig() {
     console.warn('⚠️ No SEDA_API_KEY configured. Matching SEDA tasks will remain PENDING for manual review.');
   }
 
-  if (!config.MIMO_API_KEY) {
-    console.warn('⚠️ No MIMO_API_KEY configured. Recruitment emails cannot be classified until it is set.');
+  const missingAiConfig = ['AI_API_KEY', 'AI_API_BASE_URL', 'AI_MODEL']
+    .filter((key) => !config[key]);
+  if (missingAiConfig.length > 0) {
+    console.warn(`⚠️ Missing ${missingAiConfig.join(', ')}. Recruitment emails cannot be classified until configured.`);
   }
 }
 

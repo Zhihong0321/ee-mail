@@ -89,20 +89,27 @@ ${body.slice(0, 30000)}`;
 }
 
 async function classifyAndExtract(email) {
-  const apiKey = config.MIMO_API_KEY;
-  if (!apiKey) {
-    throw new Error('MIMO_API_KEY is not configured');
+  const { AI_API_KEY: apiKey, AI_API_BASE_URL: apiBaseUrl, AI_MODEL: model } = config;
+  const missingConfig = [
+    ['AI_API_KEY', apiKey],
+    ['AI_API_BASE_URL', apiBaseUrl],
+    ['AI_MODEL', model],
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+  if (missingConfig.length > 0) {
+    throw new Error(`${missingConfig.join(', ')} must be configured`);
   }
 
   const hodDepartments = await getHodDepartments();
-  const response = await fetch(`${config.MIMO_API_BASE_URL}/chat/completions`, {
+  const response = await fetch(`${apiBaseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: config.MIMO_MODEL,
+      model,
       temperature: 0,
       response_format: { type: 'json_object' },
       messages: [
@@ -117,7 +124,7 @@ async function classifyAndExtract(email) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.error?.message || data.message || `Mimo API error: ${response.status}`);
+    const error = new Error(data.error?.message || data.message || `AI API error: ${response.status}`);
     error.status = response.status;
     throw error;
   }
