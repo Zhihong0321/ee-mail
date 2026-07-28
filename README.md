@@ -33,10 +33,12 @@ Email service using Resend API with the `@eternalgy.me` domain. Deployed on Rail
 | `SEDA_STATUS_API_URL` | No | SEDA status endpoint (defaults to the production endpoint) |
 | `SEDA_STATUS_DRY_RUN` | No | Defaults to `false`; use `true` only for safe matching tests |
 | `SEDA_TASK_WORKER_INTERVAL_MS` | No | Worker polling interval (default: 5000 ms) |
-| `AI_API_KEY` | Required for recruitment | API key for the OpenAI-compatible AI provider; store as a Railway secret |
-| `AI_API_BASE_URL` | Required for recruitment | OpenAI-compatible API root, without `/chat/completions` |
-| `AI_MODEL` | Required for recruitment | Model identifier sent to the AI provider |
-| `AI_REQUEST_TIMEOUT_MS` | No | AI request timeout in milliseconds (default: 60000) |
+| `AI_API_KEY` | No | API key for richer AI extraction; store as a Railway secret |
+| `AI_API_BASE_URL` | No | OpenAI-compatible API root, without `/chat/completions` |
+| `AI_MODEL` | No | Model identifier sent to the AI provider |
+| `AI_REQUEST_TIMEOUT_MS` | No | AI request timeout in milliseconds (default: 10000, capped at 15000); recruitment uses a local fallback if the provider is unavailable |
+| `AI_MAX_ATTEMPTS` | No | Total AI attempts including the first request (default: 3, capped at 5) |
+| `AI_RETRY_BACKOFF_MS` | No | Initial exponential retry delay in milliseconds (default: 750, capped at 10000) |
 
 Set `AI_API_KEY`, `AI_API_BASE_URL`, and `AI_MODEL` in Railway under **Service > Variables**. Railway applies changes after the service redeploys.
 
