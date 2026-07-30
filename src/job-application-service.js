@@ -75,7 +75,7 @@ async function logAiActivity({
   model,
   apiUrl,
   action = 'llm_request',
-  description,
+  description = null,
   inputSummary,
   outputSummary,
   inputTokens = null,
@@ -83,6 +83,12 @@ async function logAiActivity({
   durationMs,
   status = 'success',
   errorMessage = null,
+  entityType = null,
+  entityId = null,
+  entityLabel = null,
+  triggeredByName = null,
+  sessionId = null,
+  parentTaskId = null,
   metadata = {},
 } = {}) {
   try {
@@ -93,12 +99,16 @@ async function logAiActivity({
       agentKind: 'workflow',
       model,
       apiUrl,
+      sessionId: sessionId || null,
       taskId: emailId ? String(emailId) : null,
-      action,
+      parentTaskId: parentTaskId || null,
+      triggeredByName: triggeredByName || null,
+      action: action || 'llm_request',
       toolName: 'chat.completions',
-      entityType: emailId ? 'received_email' : null,
-      entityId: emailId ? String(emailId) : null,
-      description,
+      entityType: entityType || (emailId ? 'received_email' : null),
+      entityId: entityId || (emailId ? String(emailId) : null),
+      entityLabel: entityLabel || null,
+      description: description || 'EE-Mail recruitment workflow completed an LLM request',
       inputSummary: truncateForLog(inputSummary),
       outputSummary: truncateForLog(outputSummary),
       inputTokens,
@@ -301,7 +311,17 @@ function retryDelay(attempt) {
 
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
-export async function callAiApi(body, { emailId = null } = {}) {
+export async function callAiApi(body, {
+  emailId = null,
+  action = 'llm_request',
+  description = null,
+  entityType = null,
+  entityId = null,
+  entityLabel = null,
+  triggeredByName = null,
+  sessionId = null,
+  parentTaskId = null,
+} = {}) {
   const { apiKey, apiBaseUrl, model } = getAiConfig();
   const requestBody = JSON.stringify(body);
   let lastError;
@@ -348,7 +368,14 @@ export async function callAiApi(body, { emailId = null } = {}) {
         emailId,
         model,
         apiUrl: `${apiBaseUrl}/chat/completions`,
-        description: 'EE-Mail recruitment workflow completed an LLM request',
+        action: action || 'llm_request',
+        description: description || 'EE-Mail recruitment workflow completed an LLM request',
+        entityType,
+        entityId,
+        entityLabel,
+        triggeredByName,
+        sessionId,
+        parentTaskId,
         inputSummary: summarizeAiRequest(body, requestBody.length),
         outputSummary: summarizeAiResponse(data),
         inputTokens: usage.inputTokens,
@@ -382,7 +409,14 @@ export async function callAiApi(body, { emailId = null } = {}) {
         emailId,
         model,
         apiUrl: `${apiBaseUrl}/chat/completions`,
-        description: 'EE-Mail recruitment workflow attempted an LLM request',
+        action: action || 'llm_request',
+        description: description || 'EE-Mail recruitment workflow attempted an LLM request',
+        entityType,
+        entityId,
+        entityLabel,
+        triggeredByName,
+        sessionId,
+        parentTaskId,
         inputSummary: summarizeAiRequest(body, requestBody.length),
         outputSummary: data
           ? summarizeAiResponse(data)
@@ -452,6 +486,9 @@ export async function checkAiHealth() {
       },
       { role: 'user', content: 'Health check. Return {"ok":true}.' },
     ],
+  }, {
+    action: 'ai_health_check',
+    description: 'AI provider readiness and live health smoke test probe',
   });
   const content = data.choices?.[0]?.message?.content;
   const parsed = parseJsonObject(content);
@@ -499,7 +536,14 @@ async function classifyAndExtract(email) {
         },
         { role: 'user', content: applicationPrompt(email, hodDepartments) },
       ],
-    }, { emailId: email.email_id || null });
+    }, {
+      emailId: email.email_id || null,
+      action: 'recruitment_classification',
+      description: 'Classify and extract candidate info from recruitment email',
+      entityType: 'received_email',
+      entityId: email.email_id || (email.id ? String(email.id) : null),
+      entityLabel: email.subject || '(no subject)',
+    });
 
     const content = data.choices?.[0]?.message?.content;
     const parsed = parseJsonObject(content);

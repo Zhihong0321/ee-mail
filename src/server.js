@@ -29,6 +29,7 @@ import {
   getReceivedEmailByEmailId,
   getJobApplications,
   getPipelineEvents,
+  getAiActivityLogs,
   savePipelineEvent,
   getHodDepartments,
   saveHodDepartment,
@@ -142,6 +143,19 @@ const routes = {
         limit: req.query?.limit,
       });
       json(res, 200, { success: true, data: events });
+    } catch (err) {
+      json(res, 500, { success: false, error: err.message });
+    }
+  },
+
+  // AI activity log inspection
+  'GET /ai-activity-logs': async (req, res) => {
+    try {
+      const logs = await getAiActivityLogs({
+        taskId: req.query?.task_id || req.query?.email_id || null,
+        limit: req.query?.limit,
+      });
+      json(res, 200, { success: true, data: logs });
     } catch (err) {
       json(res, 500, { success: false, error: err.message });
     }

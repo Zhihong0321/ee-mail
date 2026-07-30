@@ -606,6 +606,32 @@ export async function getPipelineEvents({ emailId = null, receivedEmailId = null
   return result.rows;
 }
 
+export async function getAiActivityLogs({ taskId = null, limit = 100 } = {}) {
+  if (!pool) return [];
+
+  const conditions = [];
+  const values = [];
+  if (taskId) {
+    values.push(taskId);
+    conditions.push(`task_id = $${values.length}`);
+  }
+  values.push(Math.min(Math.max(Number(limit) || 100, 1), 500));
+
+  const result = await pool.query(
+    `SELECT id, app, app_env, agent, agent_kind, model, api_url, session_id, task_id,
+            parent_task_id, triggered_by_user_id, triggered_by_ref, triggered_by_name,
+            action, tool_name, entity_type, entity_id, entity_label, description,
+            input_summary, output_summary, input_tokens, output_tokens, cost_usd,
+            duration_ms, status, error_message, metadata, occurred_at
+       FROM ai_activity_log
+      ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+      ORDER BY occurred_at DESC, id DESC
+      LIMIT $${values.length}`,
+    values
+  );
+  return result.rows;
+}
+
 /**
  * Update email status from webhook
  */
