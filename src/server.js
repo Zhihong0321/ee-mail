@@ -433,13 +433,25 @@ const routes = {
                       };
 
                       console.log('📢 Notifying PR service:', prPayload);
-                      const prResponse = await fetch('https://ee-pr-production.up.railway.app/webhook/email-received', {
+                    const prResponse = await fetch('https://ee-pr.up.railway.app/webhook/email-received', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(prPayload),
                       });
 
                       if (prResponse.ok) {
+                        try {
+                          const acknowledgement = await sendEmail({
+                            from: 'pr@eternalgy.me',
+                            to: refreshedEmail.from_email,
+                            subject: `Re: ${refreshedEmail.subject || 'Your message'}`,
+                            text: 'Message received. Sent to PR AI to process.',
+                            html: '<p>Message received.</p><p>Sent to PR AI to process.</p>',
+                          });
+                          console.log('✅ PR acknowledgement sent:', acknowledgement);
+                        } catch (replyErr) {
+                          console.error('❌ PR acknowledgement error:', replyErr.message);
+                        }
                         const prResult = await prResponse.json();
                         console.log('✅ PR service notified:', prResult);
                       } else {
